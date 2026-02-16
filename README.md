@@ -59,4 +59,4 @@ python -m pytest tests/ -v
 - `src/bot/keyboards/` — клавиатуры.
 - `src/bot/config.py` — загрузка `.env`.
 
--тестовая строка
+-тестовая строка-удалить
