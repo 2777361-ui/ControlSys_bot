@@ -13,10 +13,13 @@ load_dotenv(_env_path)
 
 
 def get_token() -> str:
-    """Токен бота — обязательная переменная для запуска."""
+    """Токен бота — обязательная переменная для запуска (из .env или переменных окружения)."""
     token = os.getenv("BOT_TOKEN")
     if not token:
-        raise ValueError("BOT_TOKEN не задан в .env")
+        raise ValueError(
+            "BOT_TOKEN не задан. Локально: создайте .env с BOT_TOKEN=.... "
+            "На Amvera: задайте переменную BOT_TOKEN в настройках приложения (Environment / Переменные окружения)."
+        )
     return token
 
 

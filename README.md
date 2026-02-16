@@ -32,6 +32,10 @@ Telegram-бот на Python (aiogram), который повторяет всё,
 | `BOT_TOKEN`           | Токен от BotFather          | (обязательно) |
 | `OPENROUTER_API_KEY`  | Ключ OpenRouter для /chat   | (опционально) |
 
+### Деплой на Amvera
+
+Файл `.env` в репозиторий не попадает. Задай переменные в панели Amvera: **приложение → Настройки / Environment → Переменные окружения**. Добавь минимум `BOT_TOKEN`; при использовании `/chat` — также `OPENROUTER_API_KEY`. Запуск: `python app.py` (см. `amvera.yml`).
+
 ## Команды бота
 
 - `/start` — приветствие и клавиатура.
