@@ -6,6 +6,7 @@ from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message
+from aiogram.utils.chat_action import ChatActionSender
 
 from bot.config import get_openrouter_api_key
 from bot.keyboards.common import BTN_CHAT
@@ -72,17 +73,19 @@ async def chat_message(message: Message, state: FSMContext) -> None:
         await message.answer("Напиши текст сообщения.")
         return
 
-    # Пока ИИ думает — показываем, что обрабатываем
+    # Пока ИИ думает — показываем в статусе «печатает…» (обновляется каждые ~5 сек)
     wait = await message.answer("Думаю…")
 
     data = await state.get_data()
     history: list[dict[str, str]] = data.get("history") or []
 
-    try:
-        reply = await chat_completion(api_key, user_text, history=history)
-    except Exception as e:
-        reply = f"Ошибка запроса к ИИ: {e!s}"
-        # историю не обновляем при ошибке
+    # Контекстный менеджер сам шлёт «typing» в чат, пока мы внутри блока
+    async with ChatActionSender.typing(bot=message.bot, chat_id=message.chat.id):
+        try:
+            reply = await chat_completion(api_key, user_text, history=history)
+        except Exception as e:
+            reply = f"Ошибка запроса к ИИ: {e!s}"
+            # историю не обновляем при ошибке
 
     # Ответ ИИ — обычный текст, без HTML (чтобы < > и т.д. не ломали сообщение)
     await wait.edit_text(
