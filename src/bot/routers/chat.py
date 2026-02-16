@@ -2,11 +2,13 @@
 Режим чата с ИИ (OpenRouter).
 Команда /chat — вход в режим, сообщения уходят в LLM. /exit — выход.
 """
+import asyncio
+
 from aiogram import F, Router
+from aiogram.enums import ChatAction
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message
-from aiogram.utils.chat_action import ChatActionSender
 
 from bot.config import get_openrouter_api_key
 from bot.keyboards.common import BTN_CHAT
@@ -27,6 +29,19 @@ CHAT_ENTER = (
 CHAT_NO_KEY = "Режим чата с ИИ не настроен: в .env нужен OPENROUTER_API_KEY."
 CHAT_EXIT = "Режим чата с ИИ выключен. Пиши снова /chat, чтобы вернуться."
 MAX_HISTORY_PAIRS = 10  # храним последние 10 пар user/assistant для контекста
+TYPING_INTERVAL = 4  # секунд между отправками «печатает» (в Telegram статус живёт ~5 сек)
+
+
+async def _typing_until_done(bot, chat_id: int, done: asyncio.Event) -> None:
+    """В фоне шлёт «печатает» сразу и потом каждые TYPING_INTERVAL сек, пока не установят done."""
+    while True:
+        if done.is_set():
+            break
+        await bot.send_chat_action(chat_id, ChatAction.TYPING)
+        try:
+            await asyncio.wait_for(done.wait(), timeout=TYPING_INTERVAL)
+        except asyncio.TimeoutError:
+            pass  # цикл повторится и отправит typing снова
 
 
 @router.message(F.text.in_(["/chat", BTN_CHAT]))
@@ -73,19 +88,27 @@ async def chat_message(message: Message, state: FSMContext) -> None:
         await message.answer("Напиши текст сообщения.")
         return
 
-    # Пока ИИ думает — показываем в статусе «печатает…» (обновляется каждые ~5 сек)
+    # Сначала текст «Думаю…» (из‑за него пропадёт «печатает», поэтому запускаем цикл после)
     wait = await message.answer("Думаю…")
+
+    # Фоновая задача: раз в TYPING_INTERVAL шлёт «печатает», пока не скажем стоп
+    typing_done = asyncio.Event()
+    typing_task = asyncio.create_task(
+        _typing_until_done(message.bot, message.chat.id, typing_done)
+    )
 
     data = await state.get_data()
     history: list[dict[str, str]] = data.get("history") or []
 
-    # Контекстный менеджер сам шлёт «typing» в чат, пока мы внутри блока
-    async with ChatActionSender.typing(bot=message.bot, chat_id=message.chat.id):
-        try:
-            reply = await chat_completion(api_key, user_text, history=history)
-        except Exception as e:
-            reply = f"Ошибка запроса к ИИ: {e!s}"
-            # историю не обновляем при ошибке
+    try:
+        reply = await chat_completion(api_key, user_text, history=history)
+    except Exception as e:
+        reply = f"Ошибка запроса к ИИ: {e!s}"
+        # историю не обновляем при ошибке
+    finally:
+        # Останавливаем цикл «печатает» (без cancel — иначе задача успевает отправить лишний typing)
+        typing_done.set()
+        await typing_task
 
     # Ответ ИИ — обычный текст, без HTML (чтобы < > и т.д. не ломали сообщение)
     await wait.edit_text(
