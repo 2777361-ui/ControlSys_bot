@@ -58,3 +58,5 @@ python -m pytest tests/ -v
 - `src/bot/services/` — text, numbers, llm (OpenRouter с fallback по моделям).
 - `src/bot/keyboards/` — клавиатуры.
 - `src/bot/config.py` — загрузка `.env`.
+
+-тестовая строка
