@@ -1,0 +1,29 @@
+# Секреты — никогда не коммитить в репозиторий!
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Тесты и отладка
+.pytest_cache/
+.coverage
+htmlcov/
+*.log
+
+# IDE и ОС
+.idea/
+.vscode/
+.DS_Store
+*.swp
+*.swo
