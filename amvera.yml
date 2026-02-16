@@ -1,0 +1,16 @@
+# Конфигурация деплоя на Amvera (Telegram-бот)
+meta:
+  environment: python
+  toolchain:
+    name: pip
+    version: "3.11"
+build:
+  requirementsPath: requirements.txt
+  useCache: true
+run:
+  scriptName: app.py
+  # Запуск бота: app.py поднимает polling и держит процесс живым
+  command: python app.py
+  persistenceMount: /data
+  # Для бота порт не обязателен (нет веб-сервера), но платформа может его требовать
+  containerPort: "80"
