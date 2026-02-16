@@ -21,6 +21,10 @@ build/
 htmlcov/
 *.log
 
+# Логи и данные бота (SQLite, лог-файлы)
+logs/
+data/
+
 # IDE и ОС
 .idea/
 .vscode/

@@ -1,9 +1,15 @@
 """
 Сервис для запросов к OpenRouter API (LLM).
 Поддерживает список бесплатных моделей с автоматическим fallback при ошибке.
+
+Суперлогирование:
+  - Какую модель пробуем
+  - Полная история сообщений, отправленных ИИ
+  - Сырой ответ от ИИ (JSON до обработки)
 """
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 
@@ -31,26 +37,45 @@ async def chat_completion(
     user_message: str,
     history: list[dict[str, str]] | None = None,
     model_list: list[str] | None = None,
-) -> str:
+) -> tuple[str, str | None, str | None]:
     """
     Отправляет запрос в OpenRouter, при ошибке пробует следующие модели из списка.
     history — список {"role": "user"|"assistant", "content": "..."}.
-    Возвращает текст ответа ассистента или строку с ошибкой.
+
+    Возвращает кортеж:
+      (текст_ответа, имя_модели, сырой_json_ответ)
+
+    Если все модели не сработали — имя_модели и сырой_ответ будут None.
     """
     models = model_list or FREE_MODELS
     messages = _build_messages(user_message, history)
 
+    # Логируем текущее сообщение пользователя
+    logger.info("Сообщение пользователя для ИИ: %s", user_message[:500])
+
+    # Логируем полную историю, которую отправляем в ИИ
+    logger.debug(
+        "Полная история сообщений для ИИ (%d шт.):\n%s",
+        len(messages),
+        json.dumps(messages, ensure_ascii=False, indent=2),
+    )
+
     for model in models:
+        logger.info("Пробуем модель: %s", model)
         try:
-            text = await _request_one(api_key, model, messages)
+            text, raw_json = await _request_one(api_key, model, messages)
             if text:
-                return text
+                logger.info("Модель %s ответила успешно (длина ответа: %d)", model, len(text))
+                return text, model, raw_json
             # Пустой ответ — пробуем следующую модель
+            logger.warning("Модель %s вернула пустой ответ, пробуем следующую", model)
         except Exception as e:  # noqa: BLE001
             logger.warning("Модель %s недоступна: %s", model, e)
             continue
 
-    return "Не удалось получить ответ ни от одной модели. Попробуй позже или напиши /exit и снова /chat."
+    error_msg = "Не удалось получить ответ ни от одной модели. Попробуй позже или напиши /exit и снова /chat."
+    logger.error("Все модели не сработали!")
+    return error_msg, None, None
 
 
 def _build_messages(user_message: str, history: list[dict[str, str]] | None) -> list[dict[str, str]]:
@@ -66,13 +91,20 @@ def _build_messages(user_message: str, history: list[dict[str, str]] | None) -> 
     return out
 
 
-async def _request_one(api_key: str, model: str, messages: list[dict[str, str]]) -> str:
-    """Один запрос к одной модели. При ошибке — исключение или пустая строка."""
+async def _request_one(
+    api_key: str, model: str, messages: list[dict[str, str]]
+) -> tuple[str, str]:
+    """
+    Один запрос к одной модели. При ошибке — исключение или пустая строка.
+    Возвращает (текст_ответа, сырой_json_строка).
+    """
     payload: dict[str, Any] = {
         "model": model,
         "messages": messages,
         "max_tokens": DEFAULT_MAX_TOKENS,
     }
+
+    logger.debug("Отправляем запрос в OpenRouter: model=%s, messages_count=%d", model, len(messages))
 
     async with httpx.AsyncClient(timeout=TIMEOUT_SEC) as client:
         resp = await client.post(
@@ -85,20 +117,37 @@ async def _request_one(api_key: str, model: str, messages: list[dict[str, str]])
             },
         )
 
+    # Сырой ответ — сохраняем как строку (JSON или текст)
+    raw_text = resp.text
+
     if resp.status_code != 200:
-        raise RuntimeError(f"OpenRouter HTTP {resp.status_code}: {resp.text[:200]}")
+        logger.error(
+            "OpenRouter HTTP %d от модели %s. Сырой ответ:\n%s",
+            resp.status_code, model, raw_text[:1000],
+        )
+        raise RuntimeError(f"OpenRouter HTTP {resp.status_code}: {raw_text[:200]}")
 
     data = resp.json()
+
+    # Логируем полный сырой JSON-ответ от ИИ
+    logger.debug(
+        "Сырой ответ от модели %s:\n%s",
+        model,
+        json.dumps(data, ensure_ascii=False, indent=2)[:3000],
+    )
+
     choice = data.get("choices")
     if not choice or not isinstance(choice, list):
+        logger.error("Нет choices в ответе от модели %s: %s", model, raw_text[:500])
         raise ValueError("Нет choices в ответе")
 
     first = choice[0]
     msg = first.get("message")
     if not msg or not isinstance(msg, dict):
+        logger.error("Нет message в choice от модели %s", model)
         raise ValueError("Нет message в choice")
 
     content = msg.get("content")
     if content is None:
-        return ""
-    return str(content).strip()
+        return "", raw_text
+    return str(content).strip(), raw_text
