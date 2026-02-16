@@ -37,10 +37,12 @@ async def chat_completion(
     user_message: str,
     history: list[dict[str, str]] | None = None,
     model_list: list[str] | None = None,
+    system_prompt: str | None = None,
 ) -> tuple[str, str | None, str | None]:
     """
     Отправляет запрос в OpenRouter, при ошибке пробует следующие модели из списка.
     history — список {"role": "user"|"assistant", "content": "..."}.
+    system_prompt — системная инструкция для ИИ (задаёт «характер» / режим работы).
 
     Возвращает кортеж:
       (текст_ответа, имя_модели, сырой_json_ответ)
@@ -48,10 +50,12 @@ async def chat_completion(
     Если все модели не сработали — имя_модели и сырой_ответ будут None.
     """
     models = model_list or FREE_MODELS
-    messages = _build_messages(user_message, history)
+    messages = _build_messages(user_message, history, system_prompt=system_prompt)
 
-    # Логируем текущее сообщение пользователя
+    # Логируем текущее сообщение пользователя и системный промпт
     logger.info("Сообщение пользователя для ИИ: %s", user_message[:500])
+    if system_prompt:
+        logger.debug("Системный промпт: %s", system_prompt[:300])
 
     # Логируем полную историю, которую отправляем в ИИ
     logger.debug(
@@ -78,9 +82,21 @@ async def chat_completion(
     return error_msg, None, None
 
 
-def _build_messages(user_message: str, history: list[dict[str, str]] | None) -> list[dict[str, str]]:
-    """Собирает список сообщений для API: история + новый запрос."""
+def _build_messages(
+    user_message: str,
+    history: list[dict[str, str]] | None,
+    system_prompt: str | None = None,
+) -> list[dict[str, str]]:
+    """
+    Собирает список сообщений для API: [system] + история + новый запрос.
+
+    system_prompt — скрытая инструкция для ИИ (определяет режим работы).
+    Она идёт самой первой в списке, чтобы ИИ знал, как себя вести.
+    """
     out: list[dict[str, str]] = []
+    # Системный промпт — всегда первый (если задан)
+    if system_prompt:
+        out.append({"role": "system", "content": system_prompt})
     if history:
         for h in history[-20:]:  # не более 20 пар
             role = h.get("role", "user")
