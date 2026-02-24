@@ -22,7 +22,12 @@
             </td>
             <td>{{ u.email or "—" }}</td>
             <td>{{ "✅" if u.telegram_id else "—" }}</td>
-            <td><a href="/users/{{ u.id }}/edit">Изменить / привязать Telegram</a></td>
+            <td>
+                <a href="/users/{{ u.id }}/edit" class="btn btn-secondary">Изменить / привязать Telegram</a>
+                <form method="post" action="/users/{{ u.id }}/delete" style="display: inline;" onsubmit="return confirm('Удалить пользователя? Он исчезнет из списков и не сможет войти (деактивация).');">
+                    <button type="submit" class="btn btn-danger">Удалить</button>
+                </form>
+            </td>
         </tr>
         {% endfor %}
     </tbody>

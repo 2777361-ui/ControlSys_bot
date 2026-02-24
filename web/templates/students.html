@@ -1,12 +1,23 @@
 {% extends "base.html" %}
-{% block title %}Ученики — Школьная система{% endblock %}
+{% block title %}{% if show_archived %}Архив учеников{% else %}Ученики{% endif %} — Школьная система{% endblock %}
 {% block content %}
-<h1>Ученики</h1>
+<h1>{% if show_archived %}Архив учеников{% else %}Ученики{% endif %}</h1>
 {% if request.query_params.get("charged") == "1" %}<p class="success">Списание внесено.</p>{% endif %}
-<p><a href="/students/add" class="btn btn-primary">Добавить ученика</a></p>
-<p class="hint" style="margin-bottom: 1rem;">
-    Чтобы привязать родителя к ученику: нажмите <strong>«Пригласить родителя»</strong> в строке ученика — скопируйте ссылку и отправьте родителю. По ссылке родитель зарегистрируется и привяжется к ребёнку.
+<p>
+    {% if show_archived %}
+    <a href="/students" class="btn btn-secondary">← Активные ученики</a>
+    {% else %}
+    <a href="/students/add" class="btn btn-primary">Добавить ученика</a>
+    <a href="/students?archive=1" class="btn btn-secondary">Архив</a>
+    {% endif %}
 </p>
+{% if not show_archived %}
+<p class="hint" style="margin-bottom: 1rem;">
+    Чтобы привязать родителя к ученику: нажмите <strong>«Пригласить родителя»</strong> в строке ученика — скопируйте ссылку и отправьте родителю. Ученика можно перевести в <strong>архив</strong>: он не будет участвовать в списках, расчётах и напоминаниях, данные сохраняются.
+</p>
+{% else %}
+<p class="hint" style="margin-bottom: 1rem;">В архиве — ученики, исключённые из текущих списков и расчётов. Их можно восстановить.</p>
+{% endif %}
 <div class="table-wrap"><table>
     <thead>
         <tr>
@@ -25,11 +36,23 @@
             <td>{{ "%.2f"|format(s.balance|default(0)) }}{% if (s.balance|default(0)) < 0 %} <span class="badge badge-warning">долг</span>{% endif %}</td>
             <td>{{ s.parent_name or "—" }} {% if s.parent_email %}({{ s.parent_email }}){% endif %}</td>
             <td>
+                {% if show_archived %}
+                <form method="post" action="/students/{{ s.id }}/restore" style="display: inline;">
+                    <button type="submit" class="btn btn-primary">Восстановить</button>
+                </form>
+                {% else %}
                 <a href="/students/invite?student_id={{ s.id }}" class="btn btn-primary">Пригласить родителя</a>
                 {% if can_charge %}<a href="/student-charge/add?student_id={{ s.id }}" class="btn btn-secondary">Списание</a>{% endif %}
+                <form method="post" action="/students/{{ s.id }}/archive" style="display: inline;" onsubmit="return confirm('Перевести ученика в архив? Он не будет участвовать в списках и расчётах.');">
+                    <button type="submit" class="btn btn-secondary">В архив</button>
+                </form>
+                {% endif %}
             </td>
         </tr>
         {% endfor %}
     </tbody>
 </table></div>
+{% if not students %}
+<p class="hint">{% if show_archived %}В архиве никого нет.{% else %}Нет учеников. Добавьте первого или откройте архив.{% endif %}</p>
+{% endif %}
 {% endblock %}

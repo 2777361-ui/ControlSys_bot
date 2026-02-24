@@ -3,19 +3,7 @@
 {% block content %}
 <div class="register-card">
     <h1>Регистрация родителя</h1>
-
-    <div class="invite-info" style="margin-bottom: 1.25rem;">
-        <p><strong>Вас пригласили в личный кабинет родителя.</strong></p>
-        <p>Привязка к ученику: <strong>{{ invitation.student_name }}</strong> — {{ invitation.class_grade|class_grade_display }}.</p>
-        <p class="hint" style="margin-top: 0.5rem;">После регистрации вы сможете:</p>
-        <ul class="invite-benefits" style="margin: 0.25rem 0 1rem 1.5rem;">
-            <li>видеть баланс и историю платежей по ребёнку;</li>
-            <li>вносить платежи (питание, обучение и др.);</li>
-            <li>настраивать питание (завтрак, обед, ужин) и просматривать списания;</li>
-            <li>получать информацию о мероприятиях и напоминания о платежах (в т.ч. в Telegram, если привяжете аккаунт).</li>
-        </ul>
-        <p class="hint">Заполните форму ниже. Ссылка действительна 30 дней и действует один раз.</p>
-    </div>
+    <p class="hint" style="margin-bottom: 1rem;">Вы регистрируетесь как родитель ученика <strong>{{ invitation.student_name }}</strong> ({{ invitation.class_grade|class_grade_display }}). Укажите <strong>свои</strong> данные.</p>
 
     {% if request.query_params.get("error") == "email_taken" %}
     <p class="error">Этот email уже зарегистрирован. Войдите или укажите другой.</p>
@@ -25,8 +13,8 @@
     <form method="post" action="/register" class="register-form">
         <input type="hidden" name="token" value="{{ token }}">
         <div class="form-row">
-            <label for="full_name">ФИО</label>
-            <input type="text" id="full_name" name="full_name" required placeholder="Иванов Иван Иванович">
+            <label for="full_name">Ваше ФИО (родителя)</label>
+            <input type="text" id="full_name" name="full_name" required placeholder="Иванов Иван Иванович" autocomplete="name">
         </div>
         <div class="form-row">
             <label for="email">Email (для входа на сайт)</label>
@@ -38,6 +26,7 @@
         </div>
         <button type="submit" class="btn btn-primary btn-block">Зарегистрироваться</button>
     </form>
+    <p class="hint" style="margin-top: 1rem;">После регистрации вы сможете видеть баланс и платежи по ребёнку, вносить оплату, настраивать питание (завтрак/обед/ужин). Ссылка действительна 30 дней.</p>
     <p class="login-hint"><a href="/login">Уже есть аккаунт? Войти</a></p>
 </div>
 {% endblock %}

@@ -158,12 +158,17 @@ def _template_current_user(request: Request):
     return {"current_user": user, "deputy_allowed": deputy_allowed}
 
 
+def _redirect_302(url: str) -> None:
+    """Редирект из зависимости: raise, чтобы не подставлять ответ в параметры маршрута."""
+    raise HTTPException(status_code=302, detail="Redirect", headers={"Location": url})
+
+
 def require_permission(permission_key: str):
     """Доступ: администратор/директор/бухгалтер всегда; заместитель директора — только если ему выдали это право."""
     def _dep(request: Request):
         uid = get_current_user_id(request)
         if not uid:
-            return RedirectResponse(url="/login", status_code=302)
+            _redirect_302("/login")
         user = school_db.user_by_id(uid)
         if not user:
             raise HTTPException(status_code=403, detail="Пользователь не найден")
@@ -181,7 +186,7 @@ def require_director_or_deputy(permission_key: str):
     def _dep(request: Request):
         uid = get_current_user_id(request)
         if not uid:
-            return RedirectResponse(url="/login", status_code=302)
+            _redirect_302("/login")
         user = school_db.user_by_id(uid)
         if not user:
             raise HTTPException(status_code=403, detail="Пользователь не найден")
@@ -214,7 +219,7 @@ def require_staff(request: Request):
     """Администратор, директор, бухгалтер или заместитель директора (с любыми правами для проверки настройки)."""
     uid = get_current_user_id(request)
     if not uid:
-        return RedirectResponse(url="/login", status_code=302)
+        _redirect_302("/login")
     user = school_db.user_by_id(uid)
     if not user or user.get("role") not in ("administrator", "director", "accountant", "deputy_director"):
         raise HTTPException(status_code=403, detail="Доступ только для сотрудников школы")
@@ -225,7 +230,7 @@ def require_teacher_or_canteen(request: Request):
     """Учитель или столовая — для ввода данных по питанию; администратор/директор/бухгалтер тоже."""
     uid = get_current_user_id(request)
     if not uid:
-        return RedirectResponse(url="/login", status_code=302)
+        _redirect_302("/login")
     user = school_db.user_by_id(uid)
     if not user or user.get("role") not in ("teacher", "canteen", "administrator", "director", "accountant", "deputy_director"):
         raise HTTPException(status_code=403, detail="Доступ только для учителя или столовой")
@@ -236,7 +241,7 @@ def require_director(request: Request):
     """Директор или администратор — для отчётов, отделов и прочих прав директора."""
     uid = get_current_user_id(request)
     if not uid:
-        return RedirectResponse(url="/login", status_code=302)
+        _redirect_302("/login")
     user = school_db.user_by_id(uid)
     if not user or user.get("role") not in ("director", "administrator"):
         raise HTTPException(status_code=403, detail="Доступ только для директора или администратора")
@@ -247,7 +252,7 @@ def require_can_broadcast(request: Request):
     """Администратор, директор, бухгалтер, учитель или заместитель директора с правом «Рассылки»."""
     uid = get_current_user_id(request)
     if not uid:
-        return RedirectResponse(url="/login", status_code=302)
+        _redirect_302("/login")
     user = school_db.user_by_id(uid)
     if not user:
         raise HTTPException(status_code=403, detail="Пользователь не найден")
@@ -263,7 +268,7 @@ def require_auth(request: Request):
     """Любой авторизованный пользователь (для профиля)."""
     uid = get_current_user_id(request)
     if not uid:
-        return RedirectResponse(url="/login", status_code=302)
+        _redirect_302("/login")
     return uid
 
 
@@ -271,10 +276,10 @@ def require_parent(request: Request):
     """Только родитель (для раздела «План питания» и отчётов)."""
     uid = get_current_user_id(request)
     if not uid:
-        return RedirectResponse(url="/login", status_code=302)
+        _redirect_302("/login")
     user = school_db.user_by_id(uid)
     if not user or user.get("role") != "parent":
-        return RedirectResponse(url="/dashboard", status_code=302)
+        _redirect_302("/dashboard")
     return uid
 
 
@@ -295,7 +300,7 @@ async def index(request: Request):
 
 
 @app.get("/parent", response_class=HTMLResponse)
-async def parent_dashboard(request: Request):
+async def parent_dashboard(request: Request, welcome: str = Query("")):
     """Личный кабинет родителя: дети, баланс столовой, история платежей."""
     uid = get_current_user_id(request)
     if not uid:
@@ -307,13 +312,19 @@ async def parent_dashboard(request: Request):
     purpose_options = _purpose_options()
     purposes_with_prices = school_db.payment_purpose_list()
     meal_prices = school_db.meal_prices_get_all()
+    total_debt = 0.0
     for s in students:
-        s["balance"] = school_db.balance_total_for_student(s["id"])
+        bal = school_db.balance_total_for_student(s["id"])
+        s["balance"] = bal
+        if bal < 0:
+            total_debt += abs(bal)
         s["payments"] = school_db.payments_by_student(s["id"])[:15]
         s["charges"] = school_db.student_charges_for_student(s["id"])
         s["nutrition_deductions"] = school_db.nutrition_deductions_for_student(s["id"])[:20]
-        # Списания за питание родителя, отнесённые на этого ученика
         s["nutrition_charge_to"] = school_db.nutrition_deductions_for_student_charge_to(s["id"])[:20]
+    from datetime import date as date_type
+    today = date_type.today()
+    show_debt_banner = today.day > 10 and total_debt > 0
     return templates.TemplateResponse(
         "parent_dashboard.html",
         {
@@ -323,6 +334,9 @@ async def parent_dashboard(request: Request):
             "purpose_options": purpose_options,
             "purposes_with_prices": purposes_with_prices,
             "meal_prices": meal_prices,
+            "show_welcome": welcome == "1",
+            "show_debt_banner": show_debt_banner,
+            "total_debt": round(total_debt, 2),
         },
     )
 
@@ -504,12 +518,13 @@ async def register_page(request: Request, token: str = ""):
 @app.post("/register")
 async def register_submit(
     request: Request,
+    response: Response,
     token: str = Form(...),
     full_name: str = Form(...),
     email: str = Form(...),
     password: str = Form(...),
 ):
-    """Регистрация родителя по приглашению: создать пользователя, привязать к ученику."""
+    """Регистрация родителя по приглашению: создать пользователя, привязать к ученику, сразу войти и перейти в кабинет."""
     inv = school_db.invitation_get_by_token(token)
     if not inv:
         return RedirectResponse(url="/register?error=invalid", status_code=302)
@@ -526,7 +541,20 @@ async def register_submit(
     )
     school_db.student_parents_add(inv["student_id"], parent_id, inv.get("parent_role", "primary"))
     school_db.invitation_mark_used(token, parent_id)
-    return RedirectResponse(url="/login?registered=1", status_code=302)
+    # Сразу авторизуем и перенаправляем в личный кабинет родителя с приветствием
+    session_token = create_access_token(parent_id, "parent")
+    redirect_response = RedirectResponse(url="/parent?welcome=1", status_code=302)
+    opts = _cookie_secure_samesite(request)
+    redirect_response.set_cookie(
+        key="session",
+        value=session_token,
+        path="/",
+        httponly=True,
+        max_age=86400,
+        samesite=opts["samesite"],
+        secure=opts["secure"],
+    )
+    return redirect_response
 
 
 @app.get("/logout")
@@ -800,6 +828,19 @@ async def task_group_add(name: str = Form(...), user_id: int = Depends(require_p
     return RedirectResponse(url="/tasks/groups", status_code=302)
 
 
+@app.post("/tasks/groups/{group_id}/delete")
+async def task_group_delete_route(
+    group_id: int,
+    user_id: int = Depends(require_permission("tasks")),
+):
+    """Удалить группу (назначения на задачах с ней снимаются)."""
+    group = school_db.task_group_by_id(group_id)
+    if not group:
+        raise HTTPException(status_code=404, detail="Группа не найдена")
+    school_db.task_group_delete(group_id)
+    return RedirectResponse(url="/tasks/groups", status_code=302)
+
+
 @app.get("/tasks/groups/{group_id}", response_class=HTMLResponse)
 async def task_group_edit_page(
     request: Request,
@@ -1015,16 +1056,21 @@ async def payments_list(request: Request, user_id: int = Depends(require_permiss
 
 
 @app.get("/students", response_class=HTMLResponse)
-async def students_list(request: Request, user_id: int = Depends(require_permission("students"))):
-    """Список учеников (с балансом для бухгалтера/директора)."""
-    students = school_db.students_all()
-    current = school_db.user_by_id(user_id)
-    can_charge = current and current.get("role") in ("administrator", "director", "accountant") or (current.get("role") == "deputy_director" and school_db.deputy_has_permission(user_id, "payments"))
+async def students_list(
+    request: Request,
+    archive: str = Query(""),
+    user_id: int = Depends(require_permission("students")),
+):
+    """Список учеников (активные или архив). По умолчанию только активные."""
+    show_archived = archive == "1"
+    students = school_db.students_all(include_archived=show_archived)
     for s in students:
         s["balance"] = school_db.balance_total_for_student(s["id"])
+    current = school_db.user_by_id(user_id)
+    can_charge = current and current.get("role") in ("administrator", "director", "accountant") or (current.get("role") == "deputy_director" and school_db.deputy_has_permission(user_id, "payments"))
     return templates.TemplateResponse(
         "students.html",
-        {"request": request, "students": students, "can_charge": can_charge},
+        {"request": request, "students": students, "can_charge": can_charge, "show_archived": show_archived},
     )
 
 
@@ -1083,6 +1129,32 @@ async def student_add_submit(
         role=user.get("role") if user else None,
         extra={"full_name": full_name.strip(), "class_grade": class_grade, "parent_id": pid},
     )
+    return RedirectResponse(url="/students", status_code=302)
+
+
+@app.post("/students/{student_id}/archive")
+async def student_archive(
+    student_id: int,
+    user_id: int = Depends(require_permission("students")),
+):
+    """Перевести ученика в архив: не участвует в списках, расчётах и напоминаниях."""
+    student = school_db.student_by_id(student_id)
+    if not student:
+        raise HTTPException(status_code=404, detail="Ученик не найден")
+    school_db.student_set_archived(student_id, True)
+    return RedirectResponse(url="/students", status_code=302)
+
+
+@app.post("/students/{student_id}/restore")
+async def student_restore(
+    student_id: int,
+    user_id: int = Depends(require_permission("students")),
+):
+    """Восстановить ученика из архива."""
+    student = school_db.student_by_id(student_id)
+    if not student:
+        raise HTTPException(status_code=404, detail="Ученик не найден")
+    school_db.student_set_archived(student_id, False)
     return RedirectResponse(url="/students", status_code=302)
 
 
@@ -1156,6 +1228,18 @@ async def user_edit_submit(
             school_db.user_link_telegram(uid, tid)
         except ValueError:
             raise HTTPException(status_code=400, detail="Telegram ID должен быть числом")
+    return RedirectResponse(url="/users", status_code=302)
+
+
+@app.post("/users/{uid}/delete")
+async def user_delete_route(
+    uid: int,
+    user_id: int = Depends(require_permission("users")),
+):
+    """Деактивировать пользователя (он исчезнет из списков и не сможет войти)."""
+    ok, msg = school_db.user_delete(uid)
+    if not ok:
+        raise HTTPException(status_code=400, detail=msg or "Не удалось удалить пользователя")
     return RedirectResponse(url="/users", status_code=302)
 
 
@@ -1954,7 +2038,20 @@ async def broadcast_submit(
     if not channel_ids and not recipient_ids:
         raise HTTPException(status_code=400, detail="Выберите получателей или канал для рассылки")
 
-    bid = school_db.broadcast_create(user_id, message_text, recipient_ids if recipient_ids else None)
+    # Запланированная отправка: дата + время (локальное время пользователя → сохраняем как есть)
+    scheduled_date = (form.get("scheduled_date") or "").strip()
+    scheduled_time = (form.get("scheduled_time") or "09:00").strip()
+    scheduled_at: str | None = None
+    if scheduled_date:
+        if not scheduled_time:
+            scheduled_time = "09:00"
+        scheduled_at = f"{scheduled_date} {scheduled_time}"
+
+    bid = school_db.broadcast_create(
+        user_id, message_text,
+        recipient_ids if recipient_ids else None,
+        scheduled_at=scheduled_at,
+    )
     if channel_ids:
         school_db.broadcast_add_channel_sends(bid, channel_ids)
     audit_log(
@@ -1969,7 +2066,8 @@ async def broadcast_submit(
             "channels_count": len(channel_ids),
         },
     )
-    return RedirectResponse(url="/broadcast?sent=1", status_code=302)
+    redirect_url = "/broadcast?sent=1" + ("&scheduled=1" if scheduled_at else "")
+    return RedirectResponse(url=redirect_url, status_code=302)
 
 
 # --- Питание (учитель / столовая / бухгалтер) ---

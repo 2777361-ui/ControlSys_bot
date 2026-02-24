@@ -111,7 +111,7 @@ body {
   .page-wrap { padding: 1.5rem 2rem 2rem; }
 }
 
-/* Навигация — выкатное плавное меню (drawer) для всех экранов */
+/* Навигация: на десктопе — кнопки сверху, на мобильных — выкатное меню (drawer) */
 .nav-wrap {
   background: var(--nav-bg);
   color: var(--nav-text);
@@ -121,7 +121,7 @@ body {
   box-shadow: var(--shadow);
 }
 .nav-inner {
-  max-width: 960px;
+  max-width: 1280px;
   margin: 0 auto;
   padding: 0 1rem;
   display: flex;
@@ -130,6 +130,47 @@ body {
   min-height: var(--nav-height);
   gap: 0.75rem;
 }
+
+/* Горизонтальные ссылки — видны только на компьютере */
+.nav-links {
+  display: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+.nav-links a {
+  display: inline-block;
+  padding: 0.4rem 0.65rem;
+  font-size: 0.9rem;
+  color: var(--nav-text);
+  text-decoration: none;
+  border-radius: 8px;
+  white-space: nowrap;
+  transition: background 0.2s ease, opacity 0.2s ease;
+}
+.nav-links a:hover {
+  background: rgba(255, 255, 255, 0.2);
+  opacity: 1;
+}
+[data-theme="dark"] .nav-links a:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+.nav-links a.nav-links-logout {
+  color: #ffab91;
+}
+.nav-links a.nav-links-logout:hover {
+  background: rgba(255, 171, 145, 0.25);
+}
+@media (min-width: 992px) {
+  .nav-links { display: flex; }
+  .nav-menu-btn { display: none; }
+  .nav-inner { flex-wrap: wrap; }
+  .nav-brand { flex: 0 0 auto; }
+}
+@media (max-width: 991px) {
+  .nav-links { display: none !important; }
+}
+
 .nav-brand {
   display: flex;
   align-items: center;
@@ -322,6 +363,10 @@ body.nav-drawer-open .nav-drawer { transform: translateX(0); }
 /* Формы */
 .form-row { margin-bottom: 1rem; }
 .form-row label { display: block; margin-bottom: 0.35rem; font-weight: 500; color: var(--text); }
+.broadcast-schedule-fieldset { margin-bottom: 1rem; padding: 0.75rem 1rem; border-radius: var(--radius); border: 1px solid var(--border); }
+.broadcast-schedule-fieldset legend { padding: 0 0.5rem; font-weight: 600; }
+.broadcast-schedule-fieldset input[type="date"],
+.broadcast-schedule-fieldset input[type="time"] { width: auto; margin-right: 1rem; margin-bottom: 0.5rem; }
 input[type="text"], input[type="email"], input[type="password"], input[type="number"], input[type="date"], select, textarea {
   width: 100%;
   max-width: 400px;
@@ -386,6 +431,34 @@ tr:hover { background: #fafafa; }
 
 .error { color: var(--error); background: var(--error-bg); padding: 0.75rem; border-radius: 8px; margin-bottom: 1rem; }
 .success { color: var(--success); background: var(--success-bg); padding: 0.75rem; border-radius: 8px; margin-bottom: 1rem; }
+
+/* Плашка просрочки оплаты у родителя (после 10 числа) */
+.parent-debt-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--error-bg);
+  color: var(--error);
+  padding: 0.6rem 1rem;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  font-size: 0.95rem;
+  border-left: 4px solid var(--error);
+}
+.parent-debt-banner-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  background: var(--error);
+  color: #fff;
+  border-radius: 50%;
+  font-weight: 700;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
 .badge { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 6px; font-size: 0.8rem; }
 .badge-pending { background: #fff3e0; color: #e65100; }
 .badge-confirmed { background: var(--success-bg); color: var(--success); }

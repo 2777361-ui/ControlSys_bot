@@ -19,6 +19,34 @@
                 <img src="/static/img/logo-white.png" alt="" class="nav-logo nav-logo-dark">
                 <span>Школьная система</span>
             </a>
+            <div class="nav-links">
+                <a href="/profile">Профиль</a>
+                <a href="/messages">Сообщения</a>
+                <a href="/feedback">Обратная связь</a>
+                <a href="/my-tasks">Мои задачи</a>
+                {% if current_user and (current_user.role in ('administrator', 'director', 'accountant') or (current_user.role == 'deputy_director' and deputy_allowed)) %}
+                {% if not deputy_allowed or 'dashboard' in deputy_allowed %}<a href="/dashboard">Дашборд</a>{% endif %}
+                {% if not deputy_allowed or 'accounting' in deputy_allowed %}<a href="/accounting">Бухгалтерия</a>{% endif %}
+                {% if not deputy_allowed or 'payments' in deputy_allowed %}<a href="/payments">Платежи</a><a href="/payments/add">Внести платёж</a>{% endif %}
+                {% if not deputy_allowed or 'payment_purposes' in deputy_allowed %}<a href="/payment-purposes">Назначения</a>{% endif %}
+                {% if not deputy_allowed or 'students' in deputy_allowed %}<a href="/students">Ученики</a>{% endif %}
+                {% if not deputy_allowed or 'users' in deputy_allowed %}<a href="/users">Пользователи</a>{% endif %}
+                {% if not deputy_allowed or 'events' in deputy_allowed %}<a href="/events">Мероприятия</a>{% endif %}
+                {% if not deputy_allowed %}<a href="/nutrition">Питание</a>{% endif %}
+                {% if not deputy_allowed or 'report' in deputy_allowed %}<a href="/report">Отчёт</a>{% endif %}
+                {% if not deputy_allowed or 'departments' in deputy_allowed %}<a href="/departments">Отделы</a>{% endif %}
+                {% if not deputy_allowed or 'teacher_classes' in deputy_allowed %}<a href="/teacher-classes">Классные</a>{% endif %}
+                {% if not deputy_allowed or 'broadcast' in deputy_allowed %}<a href="/broadcast">Рассылки</a><a href="/broadcast/channels">Каналы</a>{% endif %}
+                {% if not deputy_allowed or 'feedback_inbox' in deputy_allowed %}<a href="/feedback/inbox">Обращения</a>{% endif %}
+                {% if not deputy_allowed or 'tasks' in deputy_allowed %}<a href="/tasks">Текущие дела</a>{% endif %}
+                {% endif %}
+                {% if current_user and current_user.role == 'teacher' %}
+                <a href="/my-class">Мой класс</a><a href="/nutrition">Питание</a><a href="/broadcast">Рассылки</a>
+                {% elif current_user and current_user.role == 'canteen' %}
+                <a href="/nutrition">Питание</a>
+                {% endif %}
+                <a href="/logout" class="nav-links-logout">Выход</a>
+            </div>
             <button type="button" class="nav-menu-btn" id="nav-menu-btn" aria-label="Открыть меню" aria-expanded="false" aria-controls="nav-drawer">
                 <span></span><span></span><span></span>
             </button>

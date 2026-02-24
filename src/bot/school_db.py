@@ -112,6 +112,7 @@ def _init_db_postgres() -> None:
             class_grade     INTEGER NOT NULL CHECK(class_grade >= 0 AND class_grade <= 11),
             class_letter    TEXT NOT NULL DEFAULT 'А',
             parent_id       INTEGER REFERENCES users(id),
+            archived        BOOLEAN NOT NULL DEFAULT FALSE,
             created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
@@ -229,7 +230,8 @@ def _init_db_postgres() -> None:
             message_text    TEXT NOT NULL,
             status          TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'sending', 'sent', 'partial')),
             created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            finished_at     TIMESTAMPTZ
+            finished_at     TIMESTAMPTZ,
+            scheduled_at    TIMESTAMPTZ
         )
     """)
     conn.execute("""
@@ -494,6 +496,16 @@ def _init_db_postgres() -> None:
         ('after_school', 'Продленка', 5, 0, 'manual')
         ON CONFLICT (code) DO NOTHING
     """)
+    # Колонка «в архиве» для учеников (существующие БД могли быть без неё)
+    try:
+        conn.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS archived BOOLEAN NOT NULL DEFAULT FALSE")
+    except Exception:
+        pass
+    # Колонка запланированной даты рассылки (существующие БД могли быть без неё)
+    try:
+        conn.execute("ALTER TABLE broadcast_tasks ADD COLUMN IF NOT EXISTS scheduled_at TIMESTAMPTZ")
+    except Exception:
+        pass
     conn.commit()
     logger.info("Таблицы PostgreSQL (Supabase) готовы")
 
@@ -677,7 +689,8 @@ def init_db() -> None:
             status          TEXT NOT NULL DEFAULT 'pending'
                 CHECK(status IN ('pending', 'sending', 'sent', 'partial')),
             created_at      TEXT NOT NULL DEFAULT (datetime('now')),
-            finished_at     TEXT
+            finished_at     TEXT,
+            scheduled_at    TEXT
         )
     """)
     conn.execute("""
@@ -799,6 +812,8 @@ def init_db() -> None:
     _migrate_student_charges(conn)
     _migrate_nutrition_charge_to_student(conn)
     _migrate_accounting_income_extra(conn)
+    _migrate_students_archived(conn)
+    _migrate_broadcast_scheduled_at(conn)
     conn.commit()
     logger.info("Таблицы школьной БД готовы")
 
@@ -961,6 +976,24 @@ def _migrate_accounting_income_extra(conn: sqlite3.Connection) -> None:
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_accounting_income_extra_date ON accounting_income_extra(income_date)")
     logger.info("Миграция: accounting_income_extra")
+
+
+def _migrate_students_archived(conn: sqlite3.Connection) -> None:
+    """Колонка «в архиве»: ученик не участвует в списках и расчётах, данные сохраняются."""
+    cur = conn.execute("PRAGMA table_info(students)")
+    cols = {row[1] for row in cur.fetchall()}
+    if "archived" not in cols:
+        conn.execute("ALTER TABLE students ADD COLUMN archived INTEGER NOT NULL DEFAULT 0")
+        logger.info("Миграция: students.archived")
+
+
+def _migrate_broadcast_scheduled_at(conn: sqlite3.Connection) -> None:
+    """Колонка запланированной даты/времени отправки рассылки (NULL = отправить сразу)."""
+    cur = conn.execute("PRAGMA table_info(broadcast_tasks)")
+    cols = {row[1] for row in cur.fetchall()}
+    if "scheduled_at" not in cols:
+        conn.execute("ALTER TABLE broadcast_tasks ADD COLUMN scheduled_at TEXT")
+        logger.info("Миграция: broadcast_tasks.scheduled_at")
 
 
 def _migrate_payments_purpose(conn: sqlite3.Connection) -> None:
@@ -1535,6 +1568,25 @@ def user_list(role: str | None = None) -> list[dict[str, Any]]:
     return [dict(r) for r in rows]
 
 
+def user_delete(user_id: int) -> tuple[bool, str]:
+    """Деактивировать пользователя (is_active=0). Он исчезнет из списков и не сможет войти. Нельзя деактивировать последнего администратора. Возвращает (успех, сообщение об ошибке)."""
+    conn = get_connection()
+    row = conn.execute("SELECT id, role FROM users WHERE id = ?", (user_id,)).fetchone()
+    if not row:
+        return False, "Пользователь не найден"
+    role = row.get("role") if hasattr(row, "get") else (list(row.values())[1] if hasattr(row, "values") else row[1])
+    if role == "administrator":
+        cnt_row = conn.execute(
+            "SELECT COUNT(*) AS s FROM users WHERE role = 'administrator' AND is_active = 1"
+        ).fetchone()
+        cnt = _scalar_float(cnt_row)
+        if cnt <= 1:
+            return False, "Нельзя удалить последнего администратора"
+    cur = conn.execute("UPDATE users SET is_active = 0, updated_at = datetime('now') WHERE id = ?", (user_id,))
+    conn.commit()
+    return cur.rowcount > 0, ""
+
+
 def deputy_permissions_list(user_id: int) -> list[str]:
     """Список ключей прав, выданных заместителю директора (user_id должен быть с ролью deputy_director)."""
     conn = get_connection()
@@ -1791,13 +1843,25 @@ def parents_of_class_list(class_grade: int) -> list[dict[str, Any]]:
     return users_with_telegram(user_ids=user_ids)
 
 
-def broadcast_create(created_by: int, message_text: str, recipient_user_ids: list[int] | None = None) -> int:
-    """Создать задачу рассылки. Если передан список user_id — добавить получателей (с telegram_id). Возвращает broadcast_id."""
+def broadcast_create(
+    created_by: int,
+    message_text: str,
+    recipient_user_ids: list[int] | None = None,
+    scheduled_at: str | None = None,
+) -> int:
+    """Создать задачу рассылки. Если передан список user_id — добавить получателей (с telegram_id).
+    scheduled_at — дата/время отправки в формате ISO или 'YYYY-MM-DD HH:MM' (NULL = отправить сразу). Возвращает broadcast_id."""
     conn = get_connection()
-    cur = conn.execute(
-        "INSERT INTO broadcast_tasks (created_by, message_text, status) VALUES (?, ?, 'pending')",
-        (created_by, message_text.strip()),
-    )
+    if scheduled_at and scheduled_at.strip():
+        cur = conn.execute(
+            "INSERT INTO broadcast_tasks (created_by, message_text, status, scheduled_at) VALUES (?, ?, 'pending', ?)",
+            (created_by, message_text.strip(), scheduled_at.strip()),
+        )
+    else:
+        cur = conn.execute(
+            "INSERT INTO broadcast_tasks (created_by, message_text, status) VALUES (?, ?, 'pending')",
+            (created_by, message_text.strip()),
+        )
     broadcast_id = cur.lastrowid
     if recipient_user_ids:
         users = users_with_telegram(user_ids=recipient_user_ids)
@@ -1826,11 +1890,23 @@ def broadcast_add_channel_sends(broadcast_id: int, channel_ids: list[int]) -> No
 
 
 def broadcast_pending_task() -> dict[str, Any] | None:
-    """Взять одну задачу рассылки со статусом pending (для бота)."""
+    """Взять одну задачу рассылки со статусом pending, у которой время отправки наступило или не задано (для бота)."""
     conn = get_connection()
-    row = conn.execute(
-        "SELECT * FROM broadcast_tasks WHERE status = 'pending' ORDER BY id LIMIT 1"
-    ).fetchone()
+    # SQLite: datetime сравнение строк в формате ISO; PostgreSQL: NOW()
+    if is_postgres():
+        row = conn.execute(
+            """SELECT * FROM broadcast_tasks
+               WHERE status = 'pending'
+                 AND (scheduled_at IS NULL OR scheduled_at <= NOW())
+               ORDER BY id LIMIT 1"""
+        ).fetchone()
+    else:
+        row = conn.execute(
+            """SELECT * FROM broadcast_tasks
+               WHERE status = 'pending'
+                 AND (scheduled_at IS NULL OR scheduled_at <= datetime('now'))
+               ORDER BY id LIMIT 1"""
+        ).fetchone()
     return dict(row) if row else None
 
 
@@ -1994,13 +2070,14 @@ def student_create(
 
 
 def students_by_parent_id(parent_id: int) -> list[dict[str, Any]]:
-    """Все ученики, у которых этот пользователь числится родителем (в любой роли)."""
+    """Все активные (не в архиве) ученики, у которых этот пользователь числится родителем."""
     conn = get_connection()
+    where_archived = _archived_condition(False)
     rows = conn.execute(
-        """
+        f"""
         SELECT s.* FROM students s
         JOIN student_parents sp ON s.id = sp.student_id
-        WHERE sp.user_id = ?
+        WHERE sp.user_id = ? AND {where_archived}
         ORDER BY s.class_grade, s.class_letter, s.full_name
         """,
         (parent_id,),
@@ -2060,29 +2137,48 @@ def student_by_id(student_id: int) -> dict[str, Any] | None:
     return dict(row) if row else None
 
 
-def students_all() -> list[dict[str, Any]]:
-    """Все ученики (для бухгалтера/директора); parent_name — основной родитель."""
+def _archived_condition(include_archived: bool, table_alias: str = "s") -> str:
+    """SQL: активные (не в архиве) или все. Для PostgreSQL и SQLite (archived 0/1 или NULL)."""
+    if include_archived:
+        return "1=1"
+    return f"({table_alias}.archived = 0 OR {table_alias}.archived IS NULL)"
+
+
+def students_all(include_archived: bool = False) -> list[dict[str, Any]]:
+    """Все ученики (для бухгалтера/директора); по умолчанию только активные (не в архиве)."""
     conn = get_connection()
+    where = _archived_condition(include_archived)
     rows = conn.execute(
-        """
+        f"""
         SELECT s.*, u.full_name AS parent_name, u.email AS parent_email
         FROM students s
         LEFT JOIN users u ON s.parent_id = u.id
+        WHERE {where}
         ORDER BY s.class_grade, s.class_letter, s.full_name
         """
     ).fetchall()
     return [dict(r) for r in rows]
 
 
-def students_by_class_grade(class_grade: int) -> list[dict[str, Any]]:
-    """Ученики одного класса (тот же формат, что students_all)."""
+def student_set_archived(student_id: int, archived: bool) -> bool:
+    """Перевести ученика в архив (True) или восстановить (False). В архиве не участвует в списках и расчётах."""
     conn = get_connection()
+    val = 1 if archived else 0
+    cur = conn.execute("UPDATE students SET archived = ?, updated_at = datetime('now') WHERE id = ?", (val, student_id))
+    conn.commit()
+    return cur.rowcount > 0
+
+
+def students_by_class_grade(class_grade: int) -> list[dict[str, Any]]:
+    """Ученики одного класса (только активные, не в архиве)."""
+    conn = get_connection()
+    where_archived = _archived_condition(False)
     rows = conn.execute(
-        """
+        f"""
         SELECT s.*, u.full_name AS parent_name, u.email AS parent_email
         FROM students s
         LEFT JOIN users u ON s.parent_id = u.id
-        WHERE s.class_grade = ?
+        WHERE s.class_grade = ? AND {where_archived}
         ORDER BY s.class_letter, s.full_name
         """,
         (class_grade,),
@@ -2987,7 +3083,9 @@ def process_education_charges_for_month(month_date: str) -> int:
     if price <= 0:
         return 0
     conn = get_connection()
-    rows = conn.execute("SELECT id FROM students ORDER BY id").fetchall()
+    rows = conn.execute(
+        "SELECT id FROM students WHERE (archived = 0 OR archived IS NULL) ORDER BY id"
+    ).fetchall()
     created = 0
     for row in rows:
         sid = row[0]

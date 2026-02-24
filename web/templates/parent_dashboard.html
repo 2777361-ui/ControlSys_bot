@@ -1,6 +1,15 @@
 {% extends "parent_base.html" %}
 {% block title %}Мои дети — Школьная система{% endblock %}
 {% block content %}
+{% if show_debt_banner and total_debt and total_debt > 0 %}
+<div class="parent-debt-banner" role="alert">
+    <span class="parent-debt-banner-icon" aria-hidden="true">!</span>
+    <span>Требуется оплата. Общая задолженность: <strong>{{ "%.2f"|format(total_debt) }} ₽</strong>. Пожалуйста, внесите средства на баланс.</span>
+</div>
+{% endif %}
+{% if show_welcome %}
+<p class="success" style="margin-bottom: 1rem;">Регистрация прошла успешно. Добро пожаловать в личный кабинет!</p>
+{% endif %}
 <h1>Добро пожаловать, {{ user.full_name or "Родитель" }}</h1>
 <p class="hint">Здесь отображаются ваши дети, сквозной баланс (все пополнения минус все списания: питание, обучение, расходники, продленка и т.д.) и последние платежи/списания. <a href="/parent/nutrition">План питания</a> — по умолчанию завтрак/обед/ужин. <a href="/parent/nutrition-report">Отчёт по питанию за месяц</a>.</p>
 

@@ -18,7 +18,12 @@
             {% for g in groups %}
             <tr>
                 <td>{{ g.name }}</td>
-                <td><a href="/tasks/groups/{{ g.id }}" class="btn btn-secondary">Участники</a></td>
+                <td>
+                    <a href="/tasks/groups/{{ g.id }}" class="btn btn-secondary">Участники</a>
+                    <form method="post" action="/tasks/groups/{{ g.id }}/delete" style="display: inline;" onsubmit="return confirm('Удалить группу? Назначения на задачах с ней будут сняты.');">
+                        <button type="submit" class="btn btn-danger">Удалить</button>
+                    </form>
+                </td>
             </tr>
             {% endfor %}
         </tbody>

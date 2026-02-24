@@ -2,16 +2,26 @@
 {% block title %}Рассылки — Школьная система{% endblock %}
 {% block content %}
 <h1>Рассылки</h1>
-<p class="hint">К сообщению автоматически добавится подпись отправителя. Отправка фиксируется по каждому получателю и в каждый канал.</p>
+<p class="hint">К сообщению автоматически добавится подпись отправителя. Отправка фиксируется по каждому получателю и в каждый канал. Личные сообщения уходят в Telegram (у кого привязан); при наличии WhatsApp или МАХ в профиле — поддержка рассылки в эти мессенджеры планируется.</p>
 
 {% if request.query_params.get("sent") == "1" %}
-<p class="success">Рассылка создана и будет отправлена в ближайшее время.</p>
+<p class="success">Рассылка создана. {% if request.query_params.get("scheduled") == "1" %}Она будет отправлена в указанные дату и время (должен быть запущен бот).{% else %}Будет отправлена в ближайшее время.{% endif %}</p>
 {% endif %}
 
 <form method="post" action="/broadcast" id="broadcastForm">
     <div class="form-row">
         <label for="message_text">Текст сообщения</label>
         <textarea id="message_text" name="message_text" rows="5" required placeholder="Введите текст рассылки..."></textarea>
+    </div>
+    <div class="form-row broadcast-schedule-row">
+        <fieldset class="broadcast-schedule-fieldset">
+            <legend>Отправить по расписанию</legend>
+            <p class="hint">Оставьте пустым для немедленной отправки. Иначе рассылка уйдёт в указанные дату и время (должен быть запущен бот).</p>
+            <label for="scheduled_date">Дата</label>
+            <input type="date" id="scheduled_date" name="scheduled_date" min="">
+            <label for="scheduled_time">Время</label>
+            <input type="time" id="scheduled_time" name="scheduled_time" value="09:00">
+        </fieldset>
     </div>
 
     {% if role in ("administrator", "director", "accountant") %}
@@ -307,6 +317,12 @@
             }
         }
     });
+    // Минимальная дата для расписания — сегодня
+    var dateEl = document.getElementById('scheduled_date');
+    if (dateEl) {
+        var today = new Date().toISOString().slice(0, 10);
+        dateEl.setAttribute('min', today);
+    }
 })();
 </script>
 
@@ -315,7 +331,8 @@
     <table>
         <thead>
             <tr>
-                <th>Дата</th>
+                <th>Дата создания</th>
+                <th>Запланировано на</th>
                 <th>Кто создал</th>
                 <th>Статус</th>
                 <th>Отправлено / всего</th>
@@ -325,6 +342,7 @@
             {% for b in history %}
             <tr>
                 <td>{{ (b.created_at or "")[:16] }}</td>
+                <td>{% if b.scheduled_at %}{{ (b.scheduled_at or "")[:16] }}{% else %}—{% endif %}</td>
                 <td>{{ b.created_by_name or "—" }}</td>
                 <td>{{ b.status }}</td>
                 <td>{{ b.sent_count or 0 }} / {{ b.total_count or 0 }}{% if (b.failed_count or 0) > 0 %} (не доставлено: {{ b.failed_count }}){% endif %}</td>
