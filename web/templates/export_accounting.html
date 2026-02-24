@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Бухгалтерия {{ filters.date_from }} — {{ filters.date_to }}</title>
+    <style>body{font-family:system-ui,sans-serif;margin:1rem;} table{border-collapse:collapse;width:100%;} th,td{border:1px solid #ccc;padding:0.4rem 0.6rem;text-align:left;} th{background:#1565c0;color:#fff;} .summary{margin-bottom:1rem;}</style>
+</head>
+<body>
+<h1>Бухгалтерия: движения за период</h1>
+<p class="summary"><strong>Период:</strong> с {{ filters.date_from }} по {{ filters.date_to }}</p>
+<p class="summary">Дата выгрузки: {{ export_date }}</p>
+<table>
+    <thead><tr><th>Дата</th><th>Тип</th><th>Сумма (₽)</th><th>Описание</th></tr></thead>
+    <tbody>
+    {% for m in movements %}
+    <tr>
+        <td>{{ m.date }}</td>
+        <td>{% if m.type == 'income' %}{% if m.is_extra %}Доп. средства в кассу{% else %}Пополнение {% if m.payment_type == 'cashless' %}(безнал){% else %}(нал){% endif %}{% endif %}{% else %}Списание{% endif %}</td>
+        <td>{% if m.type == 'income' %}+ {{ "%.2f"|format(m.amount) }}{% else %}− {{ "%.2f"|format(m.amount) }}{% endif %}</td>
+        <td>{{ m.description }}{% if m.purpose and not m.is_extra %} — {{ purpose_options.get(m.purpose, m.purpose) }}{% endif %}{% if m.bank_commission and m.bank_commission|float > 0 %} (комиссия {{ "%.2f"|format(m.bank_commission) }} ₽){% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% if not movements %}<p>Движений за выбранный период нет.</p>{% endif %}
+</body>
+</html>

@@ -27,10 +27,20 @@
 
 {% if not students %}
 <p>К вам пока не привязаны ученики. Обратитесь в школу или перейдите по ссылке-приглашению.</p>
-{% else %}
+    {% else %}
 {% for s in students %}
-<section class="student-block">
+<section class="student-block" id="student-{{ s.id }}">
     <h2>{{ s.full_name }} — {{ s.class_grade|class_grade_display }}</h2>
+    <p><strong>Доступ к ребёнку:</strong>
+        {% if s.parents %}
+        {% for p in s.parents %}
+        {{ p.full_name }}{% if p.parent_role == 'mom' %} (мама){% elif p.parent_role == 'dad' %} (папа){% elif p.parent_role == 'guardian' %} (опекун){% else %} (родитель){% endif %}{% if not loop.last %}, {% endif %}
+        {% endfor %}
+        {% else %}
+        только вы
+        {% endif %}
+        — <a href="/parent/invite-parent?student_id={{ s.id }}">Пригласить второго родителя</a>
+    </p>
     <p><strong>Баланс:</strong> {{ "%.2f"|format(s.balance or 0) }} ₽ {% if (s.balance or 0) < 0 %}<span class="badge badge-warning">задолженность</span>{% endif %}</p>
     {% if s.payments %}
     <p><strong>Последние платежи (пополнения):</strong></p>

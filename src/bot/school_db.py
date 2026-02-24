@@ -46,6 +46,7 @@ ROLE_TEACHER = "teacher"
 ROLE_CANTEEN = "canteen"
 
 # Ключи прав для заместителя директора (директор отмечает, что видит заместитель)
+# Порядок ключей задаёт порядок чекбоксов в форме редактирования (Пользователи → Редактировать)
 DEPUTY_PERMISSION_KEYS = {
     "dashboard": "Дашборд",
     "accounting": "Бухгалтерия",
@@ -54,6 +55,25 @@ DEPUTY_PERMISSION_KEYS = {
     "students": "Ученики",
     "users": "Пользователи",
     "events": "Мероприятия",
+    "nutrition": "Питание",
+    "report": "Отчёт",
+    "departments": "Отделы",
+    "teacher_classes": "Классные руководители",
+    "broadcast": "Рассылки и каналы",
+    "feedback_inbox": "Входящие обращения",
+    "tasks": "Текущие дела и группы",
+}
+
+# Те же ключи для настройки доступа бухгалтера (директор/админ отмечают разделы)
+ACCOUNTANT_PERMISSION_KEYS = {
+    "dashboard": "Дашборд",
+    "accounting": "Бухгалтерия",
+    "payments": "Платежи и внесение платежа",
+    "payment_purposes": "Назначения платежей",
+    "students": "Ученики",
+    "users": "Пользователи",
+    "events": "Мероприятия",
+    "nutrition": "Питание",
     "report": "Отчёт",
     "departments": "Отделы",
     "teacher_classes": "Классные руководители",
@@ -410,6 +430,13 @@ def _init_db_postgres() -> None:
     """)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS deputy_permissions (
+            user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            permission_key  TEXT NOT NULL,
+            PRIMARY KEY (user_id, permission_key)
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS accountant_permissions (
             user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
             permission_key  TEXT NOT NULL,
             PRIMARY KEY (user_id, permission_key)
@@ -876,6 +903,7 @@ def init_db() -> None:
     _migrate_users_administrator_role(conn)
     _migrate_users_deputy_director_role(conn)
     _migrate_deputy_permissions(conn)
+    _migrate_accountant_permissions(conn)
     _migrate_student_parents(conn)
     _migrate_users_profile(conn)
     _migrate_payments_accounting(conn)
@@ -893,6 +921,7 @@ def init_db() -> None:
     _migrate_nutrition_charge_to_student(conn)
     _migrate_accounting_income_extra(conn)
     _migrate_students_archived(conn)
+    _migrate_students_deleted_photo_comment(conn)
     _migrate_broadcast_scheduled_at(conn)
     _migrate_app_settings(conn)
     _migrate_meal_plan_effective_from(conn)
@@ -993,6 +1022,22 @@ def _migrate_deputy_permissions(conn: sqlite3.Connection) -> None:
     logger.info("Миграция: таблица deputy_permissions")
 
 
+def _migrate_accountant_permissions(conn: sqlite3.Connection) -> None:
+    """Таблица прав бухгалтера: какие разделы видит (назначает директор/админ)."""
+    cur = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='accountant_permissions'")
+    if cur.fetchone():
+        return
+    conn.execute("""
+        CREATE TABLE accountant_permissions (
+            user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            permission_key  TEXT NOT NULL,
+            PRIMARY KEY (user_id, permission_key)
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_accountant_permissions_user ON accountant_permissions(user_id)")
+    logger.info("Миграция: таблица accountant_permissions")
+
+
 def _migrate_users_profile(conn: sqlite3.Connection) -> None:
     """Добавить колонки профиля: аватар, тема, привязки мессенджеров (WhatsApp, МАХ)."""
     cur = conn.execute("PRAGMA table_info(users)")
@@ -1068,6 +1113,21 @@ def _migrate_students_archived(conn: sqlite3.Connection) -> None:
     if "archived" not in cols:
         conn.execute("ALTER TABLE students ADD COLUMN archived INTEGER NOT NULL DEFAULT 0")
         logger.info("Миграция: students.archived")
+
+
+def _migrate_students_deleted_photo_comment(conn: sqlite3.Connection) -> None:
+    """Колонки: deleted_at (удалён из архива), photo_path (фото), comment (краткая сводка/комментарий)."""
+    cur = conn.execute("PRAGMA table_info(students)")
+    cols = {row[1] for row in cur.fetchall()}
+    if "deleted_at" not in cols:
+        conn.execute("ALTER TABLE students ADD COLUMN deleted_at TEXT")
+        logger.info("Миграция: students.deleted_at")
+    if "photo_path" not in cols:
+        conn.execute("ALTER TABLE students ADD COLUMN photo_path TEXT")
+        logger.info("Миграция: students.photo_path")
+    if "comment" not in cols:
+        conn.execute("ALTER TABLE students ADD COLUMN comment TEXT")
+        logger.info("Миграция: students.comment")
 
 
 def _migrate_broadcast_scheduled_at(conn: sqlite3.Connection) -> None:
@@ -1774,10 +1834,71 @@ def deputy_permissions_set(user_id: int, permission_keys: list[str]) -> None:
 def deputy_has_permission(user_id: int, permission_key: str) -> bool:
     """Проверить, выдано ли заместителю директора право на раздел (для deputy_director; для директора/админа всегда True снаружи)."""
     conn = get_connection()
-    row = conn.execute(
-        "SELECT 1 FROM deputy_permissions WHERE user_id = ? AND permission_key = ?",
-        (user_id, permission_key),
-    ).fetchone()
+    if is_postgres():
+        row = conn.execute(
+            "SELECT 1 FROM deputy_permissions WHERE user_id = %s AND permission_key = %s",
+            (user_id, permission_key),
+        ).fetchone()
+    else:
+        row = conn.execute(
+            "SELECT 1 FROM deputy_permissions WHERE user_id = ? AND permission_key = ?",
+            (user_id, permission_key),
+        ).fetchone()
+    return row is not None
+
+
+def accountant_permissions_list(user_id: int) -> list[str]:
+    """Список ключей прав, выданных бухгалтеру (user_id должен быть с ролью accountant)."""
+    conn = get_connection()
+    if is_postgres():
+        rows = conn.execute(
+            "SELECT permission_key FROM accountant_permissions WHERE user_id = %s",
+            (user_id,),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT permission_key FROM accountant_permissions WHERE user_id = ?",
+            (user_id,),
+        ).fetchall()
+    return [r[0] for r in rows]
+
+
+def accountant_permissions_set(user_id: int, permission_keys: list[str]) -> None:
+    """Задать права бухгалтеру: заменяет текущий список на переданный."""
+    conn = get_connection()
+    valid_keys = set(ACCOUNTANT_PERMISSION_KEYS)
+    if is_postgres():
+        conn.execute("DELETE FROM accountant_permissions WHERE user_id = %s", (user_id,))
+        for key in permission_keys:
+            if key in valid_keys:
+                conn.execute(
+                    "INSERT INTO accountant_permissions (user_id, permission_key) VALUES (%s, %s)",
+                    (user_id, key),
+                )
+    else:
+        conn.execute("DELETE FROM accountant_permissions WHERE user_id = ?", (user_id,))
+        for key in permission_keys:
+            if key in valid_keys:
+                conn.execute(
+                    "INSERT INTO accountant_permissions (user_id, permission_key) VALUES (?, ?)",
+                    (user_id, key),
+                )
+    conn.commit()
+
+
+def accountant_has_permission(user_id: int, permission_key: str) -> bool:
+    """Проверить, выдано ли бухгалтеру право на раздел."""
+    conn = get_connection()
+    if is_postgres():
+        row = conn.execute(
+            "SELECT 1 FROM accountant_permissions WHERE user_id = %s AND permission_key = %s",
+            (user_id, permission_key),
+        ).fetchone()
+    else:
+        row = conn.execute(
+            "SELECT 1 FROM accountant_permissions WHERE user_id = ? AND permission_key = ?",
+            (user_id, permission_key),
+        ).fetchone()
     return row is not None
 
 
@@ -2230,15 +2351,16 @@ def student_create(
 
 
 def students_by_parent_id(parent_id: int) -> list[dict[str, Any]]:
-    """Все активные (не в архиве) ученики, у которых этот пользователь числится родителем."""
+    """Все активные (не в архиве, не удалённые) ученики, у которых этот пользователь числится родителем."""
     _ensure_students_archived_column_pg()
     conn = get_connection()
     where_archived = _archived_condition(False)
+    where_deleted = _students_not_deleted_condition("s")
     rows = conn.execute(
         f"""
         SELECT s.* FROM students s
         JOIN student_parents sp ON s.id = sp.student_id
-        WHERE sp.user_id = ? AND {where_archived}
+        WHERE sp.user_id = ? AND {where_archived} AND {where_deleted}
         ORDER BY s.class_grade, s.class_letter, s.full_name
         """,
         (parent_id,),
@@ -2291,10 +2413,26 @@ def student_parent_can_manage(student_id: int, user_id: int) -> bool:
     return row is not None
 
 
-def student_by_id(student_id: int) -> dict[str, Any] | None:
-    """Ученик по id."""
+def student_by_id(student_id: int, include_deleted: bool = False) -> dict[str, Any] | None:
+    """Ученик по id. По умолчанию удалённые (deleted_at IS NOT NULL) не возвращаются."""
+    _ensure_students_archived_column_pg()
     conn = get_connection()
-    row = conn.execute("SELECT * FROM students WHERE id = ?", (student_id,)).fetchone()
+    if include_deleted:
+        if is_postgres():
+            row = conn.execute("SELECT * FROM students WHERE id = %s", (student_id,)).fetchone()
+        else:
+            row = conn.execute("SELECT * FROM students WHERE id = ?", (student_id,)).fetchone()
+    else:
+        if is_postgres():
+            row = conn.execute(
+                "SELECT * FROM students WHERE id = %s AND deleted_at IS NULL",
+                (student_id,),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT * FROM students WHERE id = ? AND deleted_at IS NULL",
+                (student_id,),
+            ).fetchone()
     return dict(row) if row else None
 
 
@@ -2342,24 +2480,33 @@ _students_archived_column_ensured = False
 
 
 def _ensure_students_archived_column_pg() -> None:
-    """Для PostgreSQL: если в таблице students нет колонки archived — добавить (существующие БД на Supabase)."""
-    global _students_archived_column_ensured
+    """Для PostgreSQL: если в таблице students нет колонок archived, deleted_at, photo_path, comment — добавить."""
+    global _students_archived_column_ensured, _pg_students_archived_column_exists
     if not is_postgres() or _students_archived_column_ensured:
         return
     conn = get_connection()
     try:
-        row = conn.execute(
-            """
-            SELECT 1 FROM information_schema.columns
-            WHERE table_schema = 'public' AND table_name = 'students' AND column_name = 'archived'
-            """
-        ).fetchone()
-        if not row:
-            conn.execute("ALTER TABLE students ADD COLUMN archived BOOLEAN NOT NULL DEFAULT FALSE")
-            conn.commit()
-            logger.info("PostgreSQL: добавлена колонка students.archived")
+        for col, typ, default in [
+            ("archived", "BOOLEAN NOT NULL DEFAULT FALSE", None),
+            ("deleted_at", "TIMESTAMPTZ", None),
+            ("photo_path", "TEXT", None),
+            ("comment", "TEXT", None),
+        ]:
+            row = conn.execute(
+                """
+                SELECT 1 FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = 'students' AND column_name = %s
+                """,
+                (col,),
+            ).fetchone()
+            if not row:
+                conn.execute(f"ALTER TABLE students ADD COLUMN {col} {typ}")
+                conn.commit()
+                logger.info("PostgreSQL: добавлена колонка students.%s", col)
+                if col == "archived":
+                    _pg_students_archived_column_exists = True  # чтобы фильтр и student_set_archived сразу видели колонку
     except Exception as e:
-        logger.warning("PostgreSQL: не удалось добавить students.archived при обращении: %s", e)
+        logger.warning("PostgreSQL: не удалось добавить колонки students: %s", e)
         try:
             conn.rollback()
         except Exception:
@@ -2367,20 +2514,39 @@ def _ensure_students_archived_column_pg() -> None:
     _students_archived_column_ensured = True
 
 
+def _students_not_deleted_condition(table_alias: str = "s") -> str:
+    """SQL: ученик не удалён (deleted_at IS NULL). Колонка есть после миграции."""
+    prefix = f"{table_alias}." if table_alias else ""
+    return f"({prefix}deleted_at IS NULL)"
+
+
 def students_all(include_archived: bool = False) -> list[dict[str, Any]]:
-    """Все ученики (для бухгалтера/директора); по умолчанию только активные (не в архиве)."""
+    """Все ученики (для бухгалтера/директора); по умолчанию только активные (не в архиве), не удалённые."""
     _ensure_students_archived_column_pg()
     conn = get_connection()
-    where = _archived_condition(include_archived)
-    rows = conn.execute(
-        f"""
-        SELECT s.*, u.full_name AS parent_name, u.email AS parent_email
-        FROM students s
-        LEFT JOIN users u ON s.parent_id = u.id
-        WHERE {where}
-        ORDER BY s.class_grade, s.class_letter, s.full_name
-        """
-    ).fetchall()
+    where_archived = _archived_condition(include_archived)
+    where_deleted = _students_not_deleted_condition("s")
+    where = f"{where_archived} AND {where_deleted}"
+    if is_postgres():
+        rows = conn.execute(
+            f"""
+            SELECT s.*, u.full_name AS parent_name, u.email AS parent_email
+            FROM students s
+            LEFT JOIN users u ON s.parent_id = u.id
+            WHERE {where}
+            ORDER BY s.class_grade, s.class_letter, s.full_name
+            """
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            f"""
+            SELECT s.*, u.full_name AS parent_name, u.email AS parent_email
+            FROM students s
+            LEFT JOIN users u ON s.parent_id = u.id
+            WHERE {where}
+            ORDER BY s.class_grade, s.class_letter, s.full_name
+            """
+        ).fetchall()
     return [dict(r) for r in rows]
 
 
@@ -2404,17 +2570,118 @@ def student_set_archived(student_id: int, archived: bool) -> bool:
         return False
 
 
+def student_delete_from_archive(student_id: int) -> bool:
+    """Удалить ученика из архива: снять доступ родителей, пометить удалённым. Платежи и отчёты сохраняются (student_id остаётся в таблицах)."""
+    _ensure_students_archived_column_pg()
+    conn = get_connection()
+    try:
+        if is_postgres():
+            conn.execute("DELETE FROM student_parents WHERE student_id = %s", (student_id,))
+            from datetime import datetime, timezone
+            now = datetime.now(timezone.utc).isoformat()
+            cur = conn.execute(
+                "UPDATE students SET deleted_at = %s, updated_at = NOW() WHERE id = %s AND archived = TRUE",
+                (now, student_id),
+            )
+        else:
+            conn.execute("DELETE FROM student_parents WHERE student_id = ?", (student_id,))
+            from datetime import datetime, timezone
+            now = datetime.now(timezone.utc).isoformat()
+            cur = conn.execute(
+                "UPDATE students SET deleted_at = ?, updated_at = datetime('now') WHERE id = ? AND archived = 1",
+                (now, student_id),
+            )
+        conn.commit()
+        return cur.rowcount > 0
+    except Exception as e:
+        if is_postgres():
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+        logger.warning("student_delete_from_archive: %s", e)
+        return False
+
+
+def student_update(
+    student_id: int,
+    full_name: str | None = None,
+    class_grade: int | None = None,
+    class_letter: str | None = None,
+    comment: str | None = None,
+    photo_path: str | None = None,
+) -> bool:
+    """Обновить данные ученика (только переданные поля)."""
+    conn = get_connection()
+    updates = []
+    params = []
+    if full_name is not None:
+        updates.append("full_name = ?")
+        params.append(full_name.strip())
+    if class_grade is not None:
+        updates.append("class_grade = ?")
+        params.append(class_grade)
+    if class_letter is not None:
+        updates.append("class_letter = ?")
+        params.append((class_letter or "А").strip()[:10])
+    if comment is not None:
+        updates.append("comment = ?")
+        params.append(comment.strip() if comment else None)
+    if photo_path is not None:
+        updates.append("photo_path = ?")
+        params.append(photo_path.strip() if photo_path else None)
+    if not updates:
+        return True
+    params.append(student_id)
+    if is_postgres():
+        q = "UPDATE students SET " + ", ".join(u.replace("?", "%s") for u in updates) + ", updated_at = NOW() WHERE id = %s"
+    else:
+        q = "UPDATE students SET " + ", ".join(updates) + ", updated_at = datetime('now') WHERE id = ?"
+    try:
+        cur = conn.execute(q, params)
+        conn.commit()
+        return cur.rowcount > 0
+    except Exception as e:
+        if is_postgres():
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+        logger.warning("student_update: %s", e)
+        return False
+
+
+def student_parents_remove(student_id: int, user_id: int) -> bool:
+    """Отвязать родителя от ученика."""
+    conn = get_connection()
+    try:
+        if is_postgres():
+            cur = conn.execute("DELETE FROM student_parents WHERE student_id = %s AND user_id = %s", (student_id, user_id))
+        else:
+            cur = conn.execute("DELETE FROM student_parents WHERE student_id = ? AND user_id = ?", (student_id, user_id))
+        conn.commit()
+        return cur.rowcount > 0
+    except Exception as e:
+        if is_postgres():
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+        return False
+
+
 def students_by_class_grade(class_grade: int) -> list[dict[str, Any]]:
-    """Ученики одного класса (только активные, не в архиве)."""
+    """Ученики одного класса (только активные, не в архиве, не удалённые)."""
     _ensure_students_archived_column_pg()
     conn = get_connection()
     where_archived = _archived_condition(False)
+    where_deleted = _students_not_deleted_condition("s")
     rows = conn.execute(
         f"""
         SELECT s.*, u.full_name AS parent_name, u.email AS parent_email
         FROM students s
         LEFT JOIN users u ON s.parent_id = u.id
-        WHERE s.class_grade = ? AND {where_archived}
+        WHERE s.class_grade = ? AND {where_archived} AND {where_deleted}
         ORDER BY s.class_letter, s.full_name
         """,
         (class_grade,),

@@ -3,7 +3,10 @@
 {% block content %}
 <h1>Входящая обратная связь</h1>
 <p class="hint">Сообщения от родителей, учителей, столовой, бухгалтерии. Можно ответить, пометить прочитанным, удалить или перенести в <a href="/tasks">Текущие дела</a>.</p>
-
+<p class="no-print" style="margin-bottom: 0.75rem;">
+    <button type="button" class="btn btn-secondary" onclick="window.print();">Печать</button>
+    <a href="/feedback/inbox/export{% if status_filter %}?status={{ status_filter }}{% endif %}" class="btn btn-secondary" download>Скачать в файл</a>
+</p>
 <p>
     <a href="/feedback/inbox" class="btn btn-secondary">Все</a>
     <a href="/feedback/inbox?status=new" class="btn btn-secondary">Новые</a>

@@ -34,6 +34,18 @@
         {% endfor %}
     </div>
     {% endif %}
+    {% if can_edit_accountant_permissions and accountant_permission_keys %}
+    <h3 style="margin-top: 1.25rem;">Права бухгалтера</h3>
+    <p class="hint">Отметьте разделы, к которым бухгалтер будет иметь доступ. Сохраняет только директор или администратор.</p>
+    <div class="form-row" style="display: flex; flex-wrap: wrap; gap: 0.5rem 1.5rem;">
+        {% for key, label in accountant_permission_keys.items() %}
+        <label style="display: inline-flex; align-items: center; gap: 0.35rem;">
+            <input type="checkbox" name="accountant_permission" value="{{ key }}" {% if key in accountant_permissions %}checked{% endif %}>
+            {{ label }}
+        </label>
+        {% endfor %}
+    </div>
+    {% endif %}
     <button type="submit" class="btn btn-primary">Сохранить</button>
     <a href="/users" class="btn btn-secondary">Отмена</a>
 </form>

@@ -3,6 +3,10 @@
 {% block content %}
 <h1>Классные руководители</h1>
 <p class="hint">Назначьте учителя каждому классу. Один класс — один классный руководитель. Учитель будет видеть учеников своего класса и сможет назначать замещение педагога на время.</p>
+<p class="no-print" style="margin-bottom: 1rem;">
+    <button type="button" class="btn btn-secondary" onclick="window.print();">Печать</button>
+    <a href="/teacher-classes/export" class="btn btn-secondary" download>Скачать в файл</a>
+</p>
 {% if request.query_params.get("ok") == "1" %}<p class="success">Привязки сохранены.</p>{% endif %}
 
 <form method="post" action="/teacher-classes">

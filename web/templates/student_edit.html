@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Редактировать: {{ student.full_name }} — Школьная система{% endblock %}
+{% block content %}
+<h1>Редактировать: {{ student.full_name }}</h1>
+{% if request.query_params.get("ok") == "1" %}<p class="success">Изменения сохранены.</p>{% endif %}
+{% if request.query_params.get("photo_err") == "1" %}<p class="error">Не удалось загрузить фото. Проверьте формат (jpg, png, gif, webp).</p>{% endif %}
+{% if request.query_params.get("photo_err") == "size" %}<p class="error">Файл слишком большой (макс. 10 МБ).</p>{% endif %}
+
+<form method="post" action="/students/{{ student.id }}/edit">
+    <div class="form-row">
+        <label for="full_name">ФИО</label>
+        <input type="text" id="full_name" name="full_name" value="{{ student.full_name or '' }}" required>
+    </div>
+    <div class="form-row">
+        <label for="class_grade">Класс</label>
+        <select id="class_grade" name="class_grade" required>
+            <option value="0" {% if student.class_grade == 0 %}selected{% endif %}>Детский сад</option>
+            {% for g in range(1, 12) %}
+            <option value="{{ g }}" {% if student.class_grade == g %}selected{% endif %}>{{ g }} класс</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="form-row">
+        <label for="class_letter">Буква класса</label>
+        <input type="text" id="class_letter" name="class_letter" value="{{ student.class_letter or 'А' }}" maxlength="10" style="max-width: 5rem;">
+    </div>
+    <div class="form-row">
+        <label for="comment">Краткая сводка / комментарий</label>
+        <textarea id="comment" name="comment" rows="3" placeholder="Заметки по ученику">{{ student.comment or '' }}</textarea>
+    </div>
+    <button type="submit" class="btn btn-primary">Сохранить</button>
+    <a href="/students" class="btn btn-secondary">К списку учеников</a>
+</form>
+
+<h2 style="margin-top: 1.5rem;">Фото</h2>
+{% if student.photo_path %}
+<p><img src="/static/{{ student.photo_path }}" alt="Фото" style="max-width: 200px; max-height: 200px; object-fit: contain; border-radius: 8px;"></p>
+{% endif %}
+<form method="post" action="/students/{{ student.id }}/photo" enctype="multipart/form-data" style="margin-bottom: 1rem;">
+    <div class="form-row">
+        <label for="photo">Загрузить фото (jpg, png, gif, webp; макс. 10 МБ)</label>
+        <input type="file" id="photo" name="file" accept="image/jpeg,image/png,image/gif,image/webp">
+    </div>
+    <button type="submit" class="btn btn-secondary">Загрузить</button>
+</form>
+
+<h2 style="margin-top: 1.5rem;">Родители</h2>
+<p class="hint">Привязанные родители имеют доступ к данным ученика. Добавить нового родителя по ссылке-приглашению можно в <a href="/students">списке учеников</a> (кнопка «Пригласить родителя»).</p>
+{% if parents %}
+<ul style="list-style: none; padding: 0;">
+    {% for p in parents %}
+    <li style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+        <span>{{ p.full_name }}{% if p.email %} ({{ p.email }}){% endif %} — {% if p.parent_role == 'mom' %}мама{% elif p.parent_role == 'dad' %}папа{% else %}опекун{% endif %}</span>
+        <form method="post" action="/students/{{ student.id }}/parents/remove" style="display: inline;">
+            <input type="hidden" name="user_id" value="{{ p.user_id }}">
+            <button type="submit" class="btn btn-secondary" style="padding: 0.2rem 0.5rem; font-size: 0.85rem;" onclick="return confirm('Отвязать этого родителя от ученика?');">Отвязать</button>
+        </form>
+    </li>
+    {% endfor %}
+</ul>
+{% else %}
+<p class="hint">Родители не привязаны.</p>
+{% endif %}
+<h3 style="margin-top: 1rem;">Привязать существующего родителя</h3>
+<form method="post" action="/students/{{ student.id }}/parents/add" style="display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.5rem;">
+    <div class="form-row" style="margin: 0;">
+        <label for="parent_user_id">Родитель</label>
+        <select id="parent_user_id" name="parent_user_id" required>
+            <option value="">— Выберите —</option>
+            {% for u in parents_list %}
+            {% if u.id not in parent_ids %}
+            <option value="{{ u.id }}">{{ u.full_name }}{% if u.email %} ({{ u.email }}){% endif %}</option>
+            {% endif %}
+            {% endfor %}
+        </select>
+    </div>
+    <div class="form-row" style="margin: 0;">
+        <label for="parent_role">Роль</label>
+        <select id="parent_role" name="parent_role">
+            <option value="mom">Мама</option>
+            <option value="dad">Папа</option>
+            <option value="guardian">Опекун</option>
+        </select>
+    </div>
+    <button type="submit" class="btn btn-primary">Привязать</button>
+</form>
+
+<p style="margin-top: 1.5rem;"><a href="/students" class="btn btn-secondary">← К списку учеников</a></p>
+{% endblock %}

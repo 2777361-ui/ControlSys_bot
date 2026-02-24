@@ -67,6 +67,10 @@
 
 <section class="accounting-filters">
     <h2>Движения (пополнения и списания)</h2>
+    <p class="no-print" style="margin-bottom: 0.75rem;">
+        <button type="button" class="btn btn-secondary" onclick="window.print();">Печать</button>
+        <a href="/accounting/export?date_from={{ filters.date_from }}&date_to={{ filters.date_to }}&payment_type={{ filters.payment_type }}&amount_min={{ filters.amount_min }}&amount_max={{ filters.amount_max }}" class="btn btn-secondary" download>Скачать в файл</a>
+    </p>
     <form method="get" action="/accounting" id="accountingFilters" style="display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: flex-end; margin-bottom: 1rem;">
         <div class="form-row" style="margin-bottom: 0;">
             <label for="date_from">Дата с</label>

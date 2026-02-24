@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Мои задачи</title>
+    <style>body{font-family:system-ui,sans-serif;margin:1rem;} .task{margin-bottom:1rem;padding:0.75rem;border:1px solid #ccc;border-radius:8px;} .task h3{margin:0 0 0.35rem 0;} .badge{display:inline-block;padding:0.2rem 0.5rem;border-radius:6px;font-size:0.85rem;}</style>
+</head>
+<body>
+<h1>Мои задачи</h1>
+<p>Дата выгрузки: {{ export_date }}</p>
+{% if tasks %}
+{% for t in tasks %}
+<div class="task">
+    <h3>{{ t.title }} <span class="badge">{{ t.status }}</span></h3>
+    {% if t.description %}<div>{{ t.description | e }}</div>{% endif %}
+    {% if t.contact_info %}<p><strong>Контакт для связи:</strong> {{ t.contact_info | e }}</p>{% endif %}
+</div>
+{% endfor %}
+{% else %}
+<p>Вам пока не назначены задачи.</p>
+{% endif %}
+</body>
+</html>

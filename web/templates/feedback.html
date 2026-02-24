@@ -2,7 +2,7 @@
 {% block title %}Обратная связь — Школьная система{% endblock %}
 {% block content %}
 <h1>Обратная связь</h1>
-<p class="hint">Напишите сообщение в админку. Ответ вы увидите в разделе <a href="/messages">Сообщения</a> (блок «Мои обращения»).</p>
+<p class="hint">Напишите сообщение в администрацию. Ответ вы увидите в разделе <a href="/messages">Сообщения</a> (блок «Мои обращения»).</p>
 {% if request.query_params.get("sent") == "1" %}<p class="success">Сообщение отправлено.</p>{% endif %}
 
 <form method="post" action="/feedback">

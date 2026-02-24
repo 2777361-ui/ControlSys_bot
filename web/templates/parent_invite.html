@@ -1,0 +1,46 @@
+{% extends "parent_base.html" %}
+{% block title %}Пригласить второго родителя — Школьная система{% endblock %}
+{% block content %}
+<h1>Пригласить второго родителя</h1>
+
+<section class="invite-context" style="margin-bottom: 1.25rem;">
+    <p><strong>Ученик:</strong> {{ student.full_name }} — {{ student.class_grade|class_grade_display }}</p>
+</section>
+
+{% if invite_url %}
+<p class="hint">Отправьте второму родителю ссылку ниже. Он откроет её в браузере, зарегистрируется (ФИО, email, пароль) и получит доступ к этому ребёнку.</p>
+<div class="invite-buttons" style="display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; margin-bottom: 1rem;">
+    <a href="{{ invite_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-primary">Открыть страницу приглашения</a>
+    <button type="button" class="btn btn-secondary" onclick="copyInvite()" id="copyBtn">Копировать ссылку</button>
+</div>
+<input type="text" id="inviteUrl" readonly value="{{ invite_url }}" class="invite-input" style="max-width: 100%; margin-bottom: 0.5rem;" aria-label="Ссылка приглашения">
+<p class="hint"><strong>Срок действия:</strong> 30 дней. После регистрации по этой ссылке она станет недействительной.</p>
+<script>
+function copyInvite() {
+    var el = document.getElementById('inviteUrl');
+    el.select();
+    el.setSelectionRange(0, 99999);
+    navigator.clipboard.writeText(el.value).then(function() {
+        var btn = document.getElementById('copyBtn');
+        if (btn) { btn.textContent = 'Скопировано!'; setTimeout(function() { btn.textContent = 'Копировать ссылку'; }, 2000); }
+    });
+}
+</script>
+{% else %}
+<form method="post" action="/parent/invite-parent" class="invite-form">
+    <input type="hidden" name="student_id" value="{{ student.id }}">
+    <div class="form-row">
+        <label for="parent_role">Роль приглашаемого родителя</label>
+        <select id="parent_role" name="parent_role">
+            <option value="mom">Мама</option>
+            <option value="dad">Папа</option>
+            <option value="guardian">Опекун</option>
+        </select>
+    </div>
+    <p class="hint">После нажатия кнопки появится ссылка. Отправьте её второму родителю — он перейдёт по ней, зарегистрируется и получит доступ к ребёнку.</p>
+    <button type="submit" class="btn btn-primary">Создать ссылку-приглашение</button>
+</form>
+{% endif %}
+
+<p style="margin-top: 1.5rem;"><a href="/parent" class="btn btn-secondary">← К моим детям</a></p>
+{% endblock %}

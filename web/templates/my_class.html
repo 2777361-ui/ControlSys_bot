@@ -11,6 +11,10 @@
 <p><a href="/nutrition">Перейти к питанию</a></p>
 {% else %}
 <p><strong>Вы — классный руководитель {{ data.my_class_grade|class_grade_display }}.</strong></p>
+<p class="no-print" style="margin-bottom: 1rem;">
+    <button type="button" class="btn btn-secondary" onclick="window.print();">Печать</button>
+    <a href="/my-class/export" class="btn btn-secondary" download>Скачать в файл</a>
+</p>
 
 <h2>Ученики моего класса и задолженности</h2>
 {% if students_with_balance %}

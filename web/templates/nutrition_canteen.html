@@ -7,23 +7,30 @@
 <div class="canteen-date-nav" style="margin-bottom: 1rem;">
     <p class="canteen-date-nav-label">Быстрый выбор даты:</p>
     <div class="canteen-date-buttons">
-        {% for d in date_buttons_back %}
-        <a href="/nutrition/canteen?date={{ d }}{% if date_from_param %}&date_from={{ date_from_param }}&date_to={{ date_to_param }}{% endif %}" class="btn btn-outline{% if d == today_iso %} canteen-date-today{% endif %}{% if d in weekend_dates %} canteen-date-weekend{% endif %}">{{ d[8:10] }}.{{ d[5:7] }}</a>
+        {% for w in date_buttons_back_w %}
+        <a href="/nutrition/canteen?date={{ w.date }}{% if date_from_param %}&date_from={{ date_from_param }}&date_to={{ date_to_param }}{% endif %}" class="btn btn-outline{% if w.date == today_iso %} canteen-date-today{% endif %}{% if w.date in weekend_dates %} canteen-date-weekend{% endif %} canteen-date-btn">
+            <span class="canteen-date-num">{{ w.date[8:10] }}.{{ w.date[5:7] }}</span>
+            <span class="canteen-date-weekday">{{ w.weekday }}</span>
+        </a>
         {% endfor %}
-        <span class="btn btn-primary canteen-date-current{% if data.date == today_iso %} canteen-date-today{% endif %}">{{ data.date[8:10] }}.{{ data.date[5:7] }}</span>
-        {% for d in date_buttons_forward %}
-        <a href="/nutrition/canteen?date={{ d }}{% if date_from_param %}&date_from={{ date_from_param }}&date_to={{ date_to_param }}{% endif %}" class="btn btn-outline{% if d == today_iso %} canteen-date-today{% endif %}{% if d in weekend_dates %} canteen-date-weekend{% endif %}">{{ d[8:10] }}.{{ d[5:7] }}</a>
+        <span class="btn btn-primary canteen-date-current canteen-date-btn{% if data.date == today_iso %} canteen-date-today{% endif %}">
+            <span class="canteen-date-num">{{ data.date[8:10] }}.{{ data.date[5:7] }}</span>
+            <span class="canteen-date-weekday">{{ current_weekday }}</span>
+        </span>
+        {% for w in date_buttons_forward_w %}
+        <a href="/nutrition/canteen?date={{ w.date }}{% if date_from_param %}&date_from={{ date_from_param }}&date_to={{ date_to_param }}{% endif %}" class="btn btn-outline{% if w.date == today_iso %} canteen-date-today{% endif %}{% if w.date in weekend_dates %} canteen-date-weekend{% endif %} canteen-date-btn">
+            <span class="canteen-date-num">{{ w.date[8:10] }}.{{ w.date[5:7] }}</span>
+            <span class="canteen-date-weekday">{{ w.weekday }}</span>
+        </a>
         {% endfor %}
     </div>
-    <form method="get" action="/nutrition/canteen" class="canteen-date-range-form" style="margin-top: 0.75rem;">
+    <form method="get" action="/nutrition/canteen" class="canteen-date-range-form canteen-date-range-one-line" style="margin-top: 0.75rem;">
         <span class="canteen-date-range-label">Свой диапазон:</span>
-        <div class="canteen-date-range-row">
-            <label for="date_from">от</label>
-            <input type="date" id="date_from" name="date_from" value="{{ date_from_param }}">
-            <label for="date_to">до</label>
-            <input type="date" id="date_to" name="date_to" value="{{ date_to_param }}">
-            <button type="submit" class="btn btn-secondary">Показать</button>
-        </div>
+        <label for="date_from">от</label>
+        <input type="date" id="date_from" name="date_from" class="canteen-date-input" value="{{ date_from_param }}">
+        <label for="date_to">до</label>
+        <input type="date" id="date_to" name="date_to" class="canteen-date-input" value="{{ date_to_param }}">
+        <button type="submit" class="btn btn-secondary">Показать</button>
     </form>
     {% if date_range_list|length > 1 %}
     <p class="canteen-date-range-links hint" style="margin-top: 0.5rem;">
@@ -144,5 +151,5 @@
   cbs.forEach(function(cb) { cb.addEventListener('change', applyFilter); });
 })();
 </script>
-<p><a href="/nutrition">← К разделу питания</a></p>
+<p><a href="/nutrition">← К разделу питания</a>{% if can_edit_calendar %} | <a href="/nutrition/calendar">Календарь на месяц</a> — в какие дни списывать питание{% endif %}</p>
 {% endblock %}

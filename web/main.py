@@ -11,6 +11,7 @@ import logging
 import os
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 
 # Чтобы импортировать bot.school_db
@@ -147,15 +148,28 @@ def get_current_user_id(request: Request) -> int | None:
 
 
 def _template_current_user(request: Request):
-    """Контекст для шаблонов: текущий пользователь и права заместителя (для навигации)."""
+    """Контекст для шаблонов: текущий пользователь, права заместителя и бухгалтера (для навигации)."""
     uid = get_current_user_id(request)
     if not uid:
-        return {"current_user": None, "deputy_allowed": None}
+        return {"current_user": None, "deputy_allowed": None, "accountant_allowed": set(), "nav_perms": {}}
     user = school_db.user_by_id(uid)
     deputy_allowed = None
+    accountant_allowed = set()
     if user and user.get("role") == "deputy_director":
         deputy_allowed = set(school_db.deputy_permissions_list(uid))
-    return {"current_user": user, "deputy_allowed": deputy_allowed}
+    if user and user.get("role") == "accountant":
+        accountant_allowed = set(school_db.accountant_permissions_list(uid))
+    # Права на показ пунктов меню: директор/админ — все, бухгалтер/зам — по выданным правам
+    nav_perms = {}
+    if user:
+        role = user.get("role")
+        for key in school_db.DEPUTY_PERMISSION_KEYS:  # включает nutrition
+            nav_perms[key] = (
+                role in ("administrator", "director")
+                or (role == "accountant" and key in accountant_allowed)
+                or (role == "deputy_director" and deputy_allowed and key in deputy_allowed)
+            )
+    return {"current_user": user, "deputy_allowed": deputy_allowed, "accountant_allowed": accountant_allowed, "nav_perms": nav_perms}
 
 
 def _redirect_302(url: str) -> None:
@@ -171,7 +185,7 @@ def _ensure_user_id_int(uid: object) -> int:
 
 
 def require_permission(permission_key: str):
-    """Доступ: администратор/директор/бухгалтер всегда; заместитель директора — только если ему выдали это право."""
+    """Доступ: администратор/директор всегда; бухгалтер и заместитель — только если им выдали это право."""
     def _dep(request: Request):
         uid = get_current_user_id(request)
         if not uid:
@@ -180,7 +194,9 @@ def require_permission(permission_key: str):
         if not user:
             raise HTTPException(status_code=403, detail="Пользователь не найден")
         role = user.get("role")
-        if role in ("administrator", "director", "accountant"):
+        if role in ("administrator", "director"):
+            return uid
+        if role == "accountant" and school_db.accountant_has_permission(uid, permission_key):
             return uid
         if role == "deputy_director" and school_db.deputy_has_permission(uid, permission_key):
             return uid
@@ -213,7 +229,9 @@ templates = Jinja2Templates(
 
 
 def _class_grade_display(class_grade) -> str:
-    """Для шаблонов: 0 → «Детский сад», иначе «N класс»."""
+    """Для шаблонов: 0 → «Детский сад», None → «—», иначе «N класс»."""
+    if class_grade is None:
+        return "—"
     if class_grade == 0:
         return "Детский сад"
     return f"{class_grade} класс"
@@ -234,14 +252,21 @@ def require_staff(request: Request):
 
 
 def require_teacher_or_canteen(request: Request):
-    """Учитель или столовая — для ввода данных по питанию; администратор/директор/бухгалтер тоже."""
+    """Учитель или столовая — для ввода данных по питанию; администратор/директор всегда; бухгалтер и зам — при наличии права «Питание»."""
     uid = get_current_user_id(request)
     if not uid:
         _redirect_302("/login")
     user = school_db.user_by_id(uid)
-    if not user or user.get("role") not in ("teacher", "canteen", "administrator", "director", "accountant", "deputy_director"):
+    if not user:
         raise HTTPException(status_code=403, detail="Доступ только для учителя или столовой")
-    return uid
+    role = user.get("role")
+    if role in ("teacher", "canteen", "administrator", "director"):
+        return uid
+    if role == "accountant" and school_db.accountant_has_permission(uid, "nutrition"):
+        return uid
+    if role == "deputy_director" and school_db.deputy_has_permission(uid, "nutrition"):
+        return uid
+    raise HTTPException(status_code=403, detail="Доступ только для учителя, столовой или при наличии права «Питание»")
 
 
 def require_nutrition_calendar(request: Request):
@@ -267,7 +292,7 @@ def require_director(request: Request):
 
 
 def require_can_broadcast(request: Request):
-    """Администратор, директор, бухгалтер, учитель или заместитель директора с правом «Рассылки»."""
+    """Администратор, директор; бухгалтер и заместитель — только с правом «Рассылки»."""
     uid = get_current_user_id(request)
     if not uid:
         _redirect_302("/login")
@@ -275,11 +300,15 @@ def require_can_broadcast(request: Request):
     if not user:
         raise HTTPException(status_code=403, detail="Пользователь не найден")
     role = user.get("role")
-    if role in ("administrator", "director", "accountant", "teacher"):
+    if role in ("administrator", "director"):
+        return uid
+    if role == "accountant" and school_db.accountant_has_permission(uid, "broadcast"):
+        return uid
+    if role == "teacher":
         return uid
     if role == "deputy_director" and school_db.deputy_has_permission(uid, "broadcast"):
         return uid
-    raise HTTPException(status_code=403, detail="Рассылки доступны администратору, директору, бухгалтеру, учителю или заместителю с правом")
+    raise HTTPException(status_code=403, detail="Рассылки доступны администратору, директору, бухгалтеру с правом, учителю или заместителю с правом")
 
 
 def require_auth(request: Request):
@@ -299,6 +328,26 @@ def require_parent(request: Request):
     if not user or user.get("role") != "parent":
         _redirect_302("/dashboard")
     return uid
+
+
+def require_can_edit_student(request: Request, student_id: int):
+    """Может редактировать ученика: админ, директор, замдир с правом «Ученики», бухгалтер с правом «Ученики», учитель (свой класс)."""
+    uid = get_current_user_id(request)
+    if not uid:
+        _redirect_302("/login")
+    user = school_db.user_by_id(uid)
+    if not user:
+        raise HTTPException(status_code=403, detail="Пользователь не найден")
+    role = user.get("role")
+    if role in ("administrator", "director"):
+        return uid
+    if role == "deputy_director" and school_db.deputy_has_permission(uid, "students"):
+        return uid
+    if role == "accountant" and school_db.accountant_has_permission(uid, "students"):
+        return uid
+    if role == "teacher" and school_db.teacher_can_charge_student(uid, student_id):
+        return uid
+    raise HTTPException(status_code=403, detail="Нет доступа к редактированию этого ученика")
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -340,6 +389,7 @@ async def parent_dashboard(request: Request, welcome: str = Query("")):
         s["charges"] = school_db.student_charges_for_student(s["id"])
         s["nutrition_deductions"] = school_db.nutrition_deductions_for_student(s["id"])[:20]
         s["nutrition_charge_to"] = school_db.nutrition_deductions_for_student_charge_to(s["id"])[:20]
+        s["parents"] = school_db.student_parents_by_student(s["id"])
     from datetime import date as date_type
     today = date_type.today()
     show_debt_banner = today.day > 10 and total_debt > 0
@@ -356,6 +406,51 @@ async def parent_dashboard(request: Request, welcome: str = Query("")):
             "show_debt_banner": show_debt_banner,
             "total_debt": round(total_debt, 2),
         },
+    )
+
+
+@app.get("/parent/invite-parent", response_class=HTMLResponse)
+async def parent_invite_page(
+    request: Request,
+    student_id: int | None = Query(None),
+    user_id: int = Depends(require_parent),
+):
+    """Родитель создаёт ссылку-приглашение для второго родителя (доступ только к своему ребёнку)."""
+    if not student_id:
+        return RedirectResponse(url="/parent", status_code=302)
+    if not school_db.student_parent_can_manage(student_id, user_id):
+        raise HTTPException(status_code=403, detail="Нет доступа к этому ученику")
+    student = school_db.student_by_id(student_id)
+    if not student:
+        raise HTTPException(status_code=404, detail="Ученик не найден")
+    return templates.TemplateResponse(
+        "parent_invite.html",
+        {"request": request, "student": student, "invite_url": None},
+    )
+
+
+@app.post("/parent/invite-parent", response_class=HTMLResponse)
+async def parent_invite_create(
+    request: Request,
+    student_id: int = Form(...),
+    parent_role: str = Form("guardian"),
+    user_id: int = Depends(require_parent),
+):
+    """Создать пригласительную ссылку и показать её родителю."""
+    if not school_db.student_parent_can_manage(student_id, user_id):
+        raise HTTPException(status_code=403, detail="Нет доступа к этому ученику")
+    student = school_db.student_by_id(student_id)
+    if not student:
+        raise HTTPException(status_code=404, detail="Ученик не найден")
+    role = parent_role if parent_role in ("mom", "dad", "guardian") else "guardian"
+    token = school_db.invitation_create(student_id, parent_role=role, expires_days=30)
+    base_url = (os.getenv("BASE_URL") or "").strip().rstrip("/")
+    if not base_url:
+        base_url = str(request.base_url).rstrip("/")
+    invite_url = f"{base_url}/register?token={token}"
+    return templates.TemplateResponse(
+        "parent_invite.html",
+        {"request": request, "student": student, "invite_url": invite_url},
     )
 
 
@@ -620,7 +715,7 @@ async def messages_page(request: Request, user_id: int = Depends(require_auth)):
 
 @app.get("/feedback", response_class=HTMLResponse)
 async def feedback_page(request: Request, user_id: int = Depends(require_auth)):
-    """Форма обратной связи: любой пользователь может написать в админку."""
+    """Форма обратной связи: любой пользователь может обратиться в администрацию."""
     user_id = _ensure_user_id_int(user_id)
     user = school_db.user_by_id(user_id)
     is_parent = user and user.get("role") == "parent"
@@ -633,7 +728,7 @@ async def feedback_submit(
     message_text: str = Form(""),
     user_id: int = Depends(require_auth),
 ):
-    """Отправить обратную связь в админку."""
+    """Отправить обратную связь в администрацию."""
     user_id = _ensure_user_id_int(user_id)
     if not (message_text or "").strip():
         raise HTTPException(status_code=400, detail="Введите текст сообщения")
@@ -654,6 +749,24 @@ async def feedback_inbox_page(
     return templates.TemplateResponse(
         "feedback_inbox.html",
         {"request": request, "items": items, "status_filter": status},
+    )
+
+
+@app.get("/feedback/inbox/export")
+async def feedback_inbox_export(
+    status: str = None,
+    user_id: int = Depends(require_permission("feedback_inbox")),
+):
+    """Скачать входящие обращения в файл (HTML)."""
+    items = school_db.feedback_list(status_filter=status)
+    html = templates.env.get_template("export_feedback_inbox.html").render(
+        items=items,
+        export_date=datetime.now().strftime("%d.%m.%Y %H:%M"),
+    )
+    return Response(
+        content=html.encode("utf-8"),
+        media_type="text/html; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="obrascheniya.html"'},
     )
 
 
@@ -713,6 +826,21 @@ async def tasks_list_page(request: Request, user_id: int = Depends(require_permi
     """Список текущих дел."""
     tasks = school_db.task_list()
     return templates.TemplateResponse("tasks_list.html", {"request": request, "tasks": tasks})
+
+
+@app.get("/tasks/export")
+async def tasks_export(user_id: int = Depends(require_permission("tasks"))):
+    """Скачать список текущих дел в файл (HTML)."""
+    tasks = school_db.task_list()
+    html = templates.env.get_template("export_tasks.html").render(
+        tasks=tasks,
+        export_date=datetime.now().strftime("%d.%m.%Y %H:%M"),
+    )
+    return Response(
+        content=html.encode("utf-8"),
+        media_type="text/html; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="spisok_del.html"'},
+    )
 
 
 @app.get("/tasks/add", response_class=HTMLResponse)
@@ -916,6 +1044,22 @@ async def my_tasks_page(request: Request, user_id: int = Depends(require_auth)):
     return templates.TemplateResponse("my_tasks.html", {"request": request, "tasks": tasks, "is_parent": is_parent})
 
 
+@app.get("/my-tasks/export")
+async def my_tasks_export(user_id: int = Depends(require_auth)):
+    """Скачать список своих задач в файл (HTML)."""
+    user_id = _ensure_user_id_int(user_id)
+    tasks = school_db.tasks_for_user(user_id)
+    html = templates.env.get_template("export_my_tasks.html").render(
+        tasks=tasks,
+        export_date=datetime.now().strftime("%d.%m.%Y %H:%M"),
+    )
+    return Response(
+        content=html.encode("utf-8"),
+        media_type="text/html; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="moi_dela.html"'},
+    )
+
+
 @app.post("/profile")
 async def profile_submit(
     request: Request,
@@ -988,12 +1132,21 @@ async def profile_submit(
 
 @app.get("/dashboard", response_class=HTMLResponse)
 async def dashboard(request: Request, user_id: int = Depends(require_permission("dashboard"))):
-    """Дашборд: неподтверждённые платежи и сообщения родителей «Я совершил платёж»."""
+    """Дашборд: неподтверждённые платежи, сообщения родителей «Я совершил платёж», рассылки и мои обращения (вместо отдельной кнопки Сообщения)."""
     pending = school_db.payments_pending_all()
     parent_reports = school_db.parent_report_payment_list_pending()
+    inbox = school_db.broadcast_inbox_for_user(user_id)
+    my_feedback = school_db.feedback_list_by_user(user_id)
     return templates.TemplateResponse(
         "dashboard.html",
-        {"request": request, "pending_payments": pending, "parent_reports": parent_reports, "purpose_options": _purpose_options()},
+        {
+            "request": request,
+            "pending_payments": pending,
+            "parent_reports": parent_reports,
+            "purpose_options": _purpose_options(),
+            "inbox": inbox,
+            "my_feedback": my_feedback,
+        },
     )
 
 
@@ -1182,6 +1335,143 @@ async def student_restore(
     return RedirectResponse(url="/students", status_code=302)
 
 
+@app.post("/students/{student_id}/delete")
+async def student_delete_from_archive(
+    student_id: int,
+    user_id: int = Depends(require_permission("students")),
+):
+    """Удалить ученика из архива: снять доступ родителей, пометить удалённым. Платежи и отчёты сохраняются."""
+    student = school_db.student_by_id(student_id)
+    if not student:
+        raise HTTPException(status_code=404, detail="Ученик не найден")
+    if student.get("archived") not in (True, 1):
+        raise HTTPException(status_code=400, detail="Удалить можно только ученика из архива")
+    ok = school_db.student_delete_from_archive(student_id)
+    if not ok:
+        raise HTTPException(status_code=400, detail="Удалить можно только ученика из архива")
+    return RedirectResponse(url="/students?archive=1", status_code=302)
+
+
+@app.get("/students/{student_id}/edit", response_class=HTMLResponse)
+async def student_edit_page(
+    request: Request,
+    student_id: int,
+    user_id: int = Depends(require_can_edit_student),
+):
+    """Редактирование ученика: ФИО, класс, комментарий, фото, родители (админ, замдир, бухгалтер, учитель — свой класс)."""
+    student = school_db.student_by_id(student_id)
+    if not student:
+        raise HTTPException(status_code=404, detail="Ученик не найден")
+    parents = school_db.student_parents_by_student(student_id)
+    parents_list = school_db.user_list(role="parent")
+    parent_ids = [p["user_id"] for p in parents]
+    return templates.TemplateResponse(
+        "student_edit.html",
+        {
+            "request": request,
+            "student": student,
+            "parents": parents,
+            "parents_list": parents_list,
+            "parent_ids": parent_ids,
+        },
+    )
+
+
+@app.post("/students/{student_id}/edit", response_class=HTMLResponse)
+async def student_edit_submit(
+    request: Request,
+    student_id: int,
+    user_id: int = Depends(require_can_edit_student),
+):
+    """Сохранить изменения ученика: ФИО, класс, комментарий. Фото — отдельная загрузка."""
+    student = school_db.student_by_id(student_id)
+    if not student:
+        raise HTTPException(status_code=404, detail="Ученик не найден")
+    form = await request.form()
+    full_name = (form.get("full_name") or "").strip()
+    class_grade_raw = form.get("class_grade")
+    class_letter = (form.get("class_letter") or "А").strip()[:10]
+    comment = (form.get("comment") or "").strip() or None
+    if full_name:
+        school_db.student_update(student_id, full_name=full_name)
+    if class_grade_raw is not None and class_grade_raw != "":
+        try:
+            cg = int(class_grade_raw)
+            if 0 <= cg <= 11:
+                school_db.student_update(student_id, class_grade=cg)
+        except ValueError:
+            pass
+    if class_letter is not None:
+        school_db.student_update(student_id, class_letter=class_letter)
+    if "comment" in form:
+        school_db.student_update(student_id, comment=comment)
+    return RedirectResponse(url=f"/students/{student_id}/edit?ok=1", status_code=302)
+
+
+@app.post("/students/{student_id}/photo", response_class=HTMLResponse)
+async def student_photo_upload(
+    request: Request,
+    student_id: int,
+    user_id: int = Depends(require_can_edit_student),
+    file: UploadFile = File(None),
+):
+    """Загрузить фото ученика. Сохраняем в static/uploads/students/."""
+    student = school_db.student_by_id(student_id)
+    if not student:
+        raise HTTPException(status_code=404, detail="Ученик не найден")
+    if not file or not file.filename:
+        return RedirectResponse(url=f"/students/{student_id}/edit?photo_err=1", status_code=302)
+    import uuid
+    ext = (file.filename or "").rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else "jpg"
+    if ext not in ("jpg", "jpeg", "png", "gif", "webp"):
+        ext = "jpg"
+    name = f"{uuid.uuid4().hex}.{ext}"
+    upload_dir = Path(__file__).parent / "static" / "uploads" / "students"
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    path = upload_dir / name
+    try:
+        content = await file.read()
+        if len(content) > 10 * 1024 * 1024:
+            return RedirectResponse(url=f"/students/{student_id}/edit?photo_err=size", status_code=302)
+        path.write_bytes(content)
+    except Exception:
+        return RedirectResponse(url=f"/students/{student_id}/edit?photo_err=1", status_code=302)
+    school_db.student_update(student_id, photo_path=f"uploads/students/{name}")
+    return RedirectResponse(url=f"/students/{student_id}/edit?ok=1", status_code=302)
+
+
+@app.post("/students/{student_id}/parents/remove")
+async def student_parent_remove(
+    request: Request,
+    student_id: int,
+    user_id: int = Depends(require_can_edit_student),
+    parent_user_id: int = Form(..., alias="user_id"),
+):
+    """Отвязать родителя от ученика."""
+    student = school_db.student_by_id(student_id)
+    if not student:
+        raise HTTPException(status_code=404, detail="Ученик не найден")
+    school_db.student_parents_remove(student_id, parent_user_id)
+    return RedirectResponse(url=f"/students/{student_id}/edit?ok=1", status_code=302)
+
+
+@app.post("/students/{student_id}/parents/add")
+async def student_parent_add(
+    request: Request,
+    student_id: int,
+    user_id: int = Depends(require_can_edit_student),
+    parent_user_id: int = Form(..., alias="parent_user_id"),
+    parent_role: str = Form("guardian"),
+):
+    """Привязать существующего родителя к ученику."""
+    student = school_db.student_by_id(student_id)
+    if not student:
+        raise HTTPException(status_code=404, detail="Ученик не найден")
+    role = parent_role if parent_role in ("mom", "dad", "guardian") else "guardian"
+    school_db.student_parents_add(student_id, parent_user_id, role)
+    return RedirectResponse(url=f"/students/{student_id}/edit?ok=1", status_code=302)
+
+
 @app.get("/users", response_class=HTMLResponse)
 async def users_list(request: Request, user_id: int = Depends(require_permission("users"))):
     """Список пользователей (родители, сотрудники)."""
@@ -1194,16 +1484,21 @@ async def users_list(request: Request, user_id: int = Depends(require_permission
 
 @app.get("/users/{uid}/edit", response_class=HTMLResponse)
 async def user_edit_page(request: Request, uid: int, user_id: int = Depends(require_permission("users"))):
-    """Редактирование пользователя (привязка Telegram ID, для заместителя — права разделов)."""
+    """Редактирование пользователя (привязка Telegram ID; для заместителя и бухгалтера — права разделов)."""
     user = school_db.user_by_id(uid)
     if not user:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     current = school_db.user_by_id(user_id)
     deputy_permissions = []
     can_edit_deputy_permissions = False
+    accountant_permissions = []
+    can_edit_accountant_permissions = False
     if user.get("role") == "deputy_director" and current and current.get("role") in ("director", "administrator"):
         can_edit_deputy_permissions = True
         deputy_permissions = school_db.deputy_permissions_list(uid)
+    if user.get("role") == "accountant" and current and current.get("role") in ("director", "administrator"):
+        can_edit_accountant_permissions = True
+        accountant_permissions = school_db.accountant_permissions_list(uid)
     return templates.TemplateResponse(
         "user_edit.html",
         {
@@ -1212,6 +1507,9 @@ async def user_edit_page(request: Request, uid: int, user_id: int = Depends(requ
             "deputy_permissions": deputy_permissions,
             "deputy_permission_keys": school_db.DEPUTY_PERMISSION_KEYS,
             "can_edit_deputy_permissions": can_edit_deputy_permissions,
+            "accountant_permissions": accountant_permissions,
+            "accountant_permission_keys": school_db.ACCOUNTANT_PERMISSION_KEYS,
+            "can_edit_accountant_permissions": can_edit_accountant_permissions,
         },
     )
 
@@ -1226,16 +1524,19 @@ async def user_edit_submit(
     telegram_id: str = Form(""),
     user_id: int = Depends(require_permission("users")),
 ):
-    """Сохранить данные пользователя: ФИО, email, пароль, Telegram ID; для заместителя — права разделов."""
+    """Сохранить данные пользователя: ФИО, email, пароль, Telegram ID; для заместителя и бухгалтера — права разделов."""
     from web.auth_utils import hash_password
     u = school_db.user_by_id(uid)
     if not u:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
     current = school_db.user_by_id(user_id)
+    form = await request.form()
     if u.get("role") == "deputy_director" and current and current.get("role") in ("director", "administrator"):
-        form = await request.form()
         keys = form.getlist("deputy_permission")
         school_db.deputy_permissions_set(uid, keys)
+    if u.get("role") == "accountant" and current and current.get("role") in ("director", "administrator"):
+        keys = form.getlist("accountant_permission")
+        school_db.accountant_permissions_set(uid, keys)
     if full_name and full_name.strip():
         school_db.user_update(uid, full_name=full_name.strip())
     email_clean = email.strip().lower() if email else ""
@@ -1569,6 +1870,80 @@ async def accounting_page(
     )
 
 
+@app.get("/accounting/export")
+async def accounting_export(
+    date_from: str = None,
+    date_to: str = None,
+    payment_type: str = None,
+    amount_min: str = None,
+    amount_max: str = None,
+    user_id: int = Depends(require_permission("accounting")),
+):
+    """Скачать бухгалтерскую отчётность за выбранный диапазон в файл (HTML)."""
+    start, end = school_db.school_year_period()
+    df = date_from or start
+    dt = date_to or end
+    am_min = float(amount_min) if amount_min and amount_min.strip() else None
+    try:
+        am_max = float(amount_max) if amount_max and amount_max.strip() else None
+    except ValueError:
+        am_max = None
+    incomes = school_db.accounting_incomes_list(
+        date_from=df, date_to=dt,
+        payment_type_filter=payment_type or None,
+        amount_min=am_min,
+        amount_max=am_max,
+    )
+    incomes_extra = school_db.accounting_income_extra_list(date_from=df, date_to=dt)
+    expenses = school_db.accounting_expenses_list(date_from=df, date_to=dt)
+    movements = []
+    for p in incomes:
+        movements.append({
+            "date": (p.get("movement_date") or p.get("created_at") or "")[:10],
+            "type": "income",
+            "amount": p.get("received") or p.get("amount", 0),
+            "payment_type": p.get("payment_type"),
+            "description": p.get("student_name") or "",
+            "purpose": p.get("purpose"),
+            "bank_commission": p.get("bank_commission"),
+            "is_extra": False,
+        })
+    for ex in incomes_extra:
+        movements.append({
+            "date": (ex.get("income_date") or "")[:10],
+            "type": "income",
+            "amount": ex.get("amount", 0),
+            "payment_type": None,
+            "description": ex.get("comment") or "Доп. средства в кассу",
+            "purpose": None,
+            "bank_commission": None,
+            "is_extra": True,
+        })
+    for e in expenses:
+        movements.append({
+            "date": (e.get("expense_date") or "")[:10],
+            "type": "expense",
+            "amount": e.get("amount", 0),
+            "description": e.get("reason") or "—",
+            "purpose": None,
+            "bank_commission": None,
+            "is_extra": False,
+        })
+    movements.sort(key=lambda x: x["date"] or "", reverse=True)
+    filters = {"date_from": df, "date_to": dt}
+    html = templates.env.get_template("export_accounting.html").render(
+        movements=movements,
+        purpose_options=_purpose_options(),
+        filters=filters,
+        export_date=datetime.now().strftime("%d.%m.%Y %H:%M"),
+    )
+    return Response(
+        content=html.encode("utf-8"),
+        media_type="text/html; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="buhgalteriya.html"'},
+    )
+
+
 @app.post("/accounting/opening-balance")
 async def accounting_opening_balance_submit(
     request: Request,
@@ -1737,6 +2112,21 @@ async def teacher_classes_page(request: Request, user_id: int = Depends(require_
     )
 
 
+@app.get("/teacher-classes/export")
+async def teacher_classes_export(user_id: int = Depends(require_permission("teacher_classes"))):
+    """Скачать список классных руководителей в файл (HTML)."""
+    assignments = school_db.teacher_class_list_all()
+    html = templates.env.get_template("export_teacher_classes.html").render(
+        assignments=assignments,
+        export_date=datetime.now().strftime("%d.%m.%Y %H:%M"),
+    )
+    return Response(
+        content=html.encode("utf-8"),
+        media_type="text/html; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="klassnye_rukovoditeli.html"'},
+    )
+
+
 @app.post("/teacher-classes")
 async def teacher_classes_submit(
     request: Request,
@@ -1790,6 +2180,32 @@ async def my_class_page(request: Request, user_id: int = Depends(require_teacher
             "students_with_balance": students_with_balance,
             "purposes_for_charge": purposes_for_charge,
         },
+    )
+
+
+@app.get("/my-class/export")
+async def my_class_export(user_id: int = Depends(require_teacher_or_canteen)):
+    """Скачать список учеников класса в файл (HTML)."""
+    user = school_db.user_by_id(user_id)
+    if not user or user.get("role") != "teacher":
+        raise HTTPException(status_code=403, detail="Доступ только для учителя")
+    data = school_db.students_for_teacher(user_id)
+    students_with_balance = []
+    if data.get("my_class_grade") is not None:
+        students_with_balance = school_db.students_with_balance_by_class(data["my_class_grade"])
+    students_export = students_with_balance if students_with_balance else [
+        {"full_name": s["full_name"], "parent_name": s.get("parent_name"), "balance": 0, "debt": 0}
+        for s in (data.get("my_class_students") or [])
+    ]
+    html = templates.env.get_template("export_my_class.html").render(
+        data=data,
+        students_export=students_export,
+        export_date=datetime.now().strftime("%d.%m.%Y %H:%M"),
+    )
+    return Response(
+        content=html.encode("utf-8"),
+        media_type="text/html; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="ucheniki_klassa.html"'},
     )
 
 
@@ -2112,9 +2528,16 @@ async def nutrition_index(request: Request, user_id: int = Depends(require_teach
     except Exception:
         tz = ZoneInfo("Asia/Yekaterinburg")
     today_iso = datetime.now(tz).strftime("%Y-%m-%d")
-    # 3 даты назад, 5 вперёд (суббота/воскресенье помечаем для подсветки)
+    # 3 даты назад, 5 вперёд (суббота/воскресенье помечаем для подсветки); к каждой дате — аббревиатура дня недели
+    weekdays_ru = ("пн", "вт", "ср", "чт", "пт", "сб", "вс")
+    def _date_with_weekday(iso_date):
+        wd = date_type.fromisoformat(iso_date).weekday()
+        return {"date": iso_date, "weekday": weekdays_ru[wd]}
     date_buttons_back = [(today - timedelta(days=k)).isoformat() for k in range(3, 0, -1)]
     date_buttons_forward = [(today + timedelta(days=k)).isoformat() for k in range(1, 6)]
+    date_buttons_back_w = [_date_with_weekday(d) for d in date_buttons_back]
+    date_buttons_forward_w = [_date_with_weekday(d) for d in date_buttons_forward]
+    today_weekday = weekdays_ru[date_type.fromisoformat(today_iso).weekday()]
     all_button_dates = date_buttons_back + [today_iso] + date_buttons_forward
     weekend_dates = {d for d in all_button_dates if date_type.fromisoformat(d).weekday() >= 5}
     return templates.TemplateResponse(
@@ -2125,8 +2548,11 @@ async def nutrition_index(request: Request, user_id: int = Depends(require_teach
             "can_edit_nutrition_settings": can_edit_nutrition_settings,
             "can_edit_calendar": can_edit_calendar,
             "today_iso": today_iso,
+            "today_weekday": today_weekday,
             "date_buttons_back": date_buttons_back,
             "date_buttons_forward": date_buttons_forward,
+            "date_buttons_back_w": date_buttons_back_w,
+            "date_buttons_forward_w": date_buttons_forward_w,
             "weekend_dates": weekend_dates,
         },
     )
@@ -2152,11 +2578,20 @@ async def nutrition_canteen_view(
             pass
     if not date:
         date = date_type.today().isoformat()
+    user = school_db.user_by_id(user_id)
+    can_edit_calendar = user and user.get("role") in ("director", "accountant", "canteen", "administrator")
     data = school_db.canteen_view_for_date(date)
     prices = school_db.meal_prices_get_all()
     current = date_type.fromisoformat(date)
     date_buttons_back = [(current - timedelta(days=k)).isoformat() for k in range(3, 0, -1)]
     date_buttons_forward = [(current + timedelta(days=k)).isoformat() for k in range(1, 6)]
+    weekdays_ru = ("пн", "вт", "ср", "чт", "пт", "сб", "вс")
+    def _date_with_weekday(iso_date):
+        wd = date_type.fromisoformat(iso_date).weekday()
+        return {"date": iso_date, "weekday": weekdays_ru[wd]}
+    date_buttons_back_w = [_date_with_weekday(d) for d in date_buttons_back]
+    date_buttons_forward_w = [_date_with_weekday(d) for d in date_buttons_forward]
+    current_weekday = weekdays_ru[current.weekday()]
     all_button_dates = date_buttons_back + [date] + date_buttons_forward
     weekend_dates = {d for d in all_button_dates if date_type.fromisoformat(d).weekday() >= 5}
     from datetime import datetime
@@ -2187,6 +2622,10 @@ async def nutrition_canteen_view(
             "prices": prices,
             "date_buttons_back": date_buttons_back,
             "date_buttons_forward": date_buttons_forward,
+            "date_buttons_back_w": date_buttons_back_w,
+            "date_buttons_forward_w": date_buttons_forward_w,
+            "current_weekday": current_weekday,
+            "can_edit_calendar": can_edit_calendar,
             "date_range_list": date_range_list,
             "date_from_param": date_from or "",
             "date_to_param": date_to or "",

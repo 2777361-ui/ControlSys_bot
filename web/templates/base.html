@@ -21,24 +21,40 @@
             </a>
             <div class="nav-links">
                 <a href="/profile">Профиль</a>
+                {% if not (current_user and (current_user.role in ('administrator', 'director', 'accountant') or (current_user.role == 'deputy_director' and deputy_allowed))) %}
                 <a href="/messages">Сообщения</a>
+                {% endif %}
                 <a href="/feedback">Обратная связь</a>
                 <a href="/my-tasks">Мои задачи</a>
                 {% if current_user and (current_user.role in ('administrator', 'director', 'accountant') or (current_user.role == 'deputy_director' and deputy_allowed)) %}
-                {% if not deputy_allowed or 'dashboard' in deputy_allowed %}<a href="/dashboard">Дашборд</a>{% endif %}
-                {% if not deputy_allowed or 'accounting' in deputy_allowed %}<a href="/accounting">Бухгалтерия</a>{% endif %}
-                {% if not deputy_allowed or 'payments' in deputy_allowed %}<a href="/payments">Платежи</a><a href="/payments/add">Внести платёж</a>{% endif %}
-                {% if not deputy_allowed or 'payment_purposes' in deputy_allowed %}<a href="/payment-purposes">Назначения</a>{% endif %}
-                {% if not deputy_allowed or 'students' in deputy_allowed %}<a href="/students">Ученики</a>{% endif %}
-                {% if not deputy_allowed or 'users' in deputy_allowed %}<a href="/users">Пользователи</a>{% endif %}
-                {% if not deputy_allowed or 'events' in deputy_allowed %}<a href="/events">Мероприятия</a>{% endif %}
-                {% if not deputy_allowed %}<a href="/nutrition">Питание</a>{% endif %}
-                {% if not deputy_allowed or 'report' in deputy_allowed %}<a href="/report">Отчёт</a>{% endif %}
-                {% if not deputy_allowed or 'departments' in deputy_allowed %}<a href="/departments">Отделы</a>{% endif %}
-                {% if not deputy_allowed or 'teacher_classes' in deputy_allowed %}<a href="/teacher-classes">Классные</a>{% endif %}
-                {% if not deputy_allowed or 'broadcast' in deputy_allowed %}<a href="/broadcast">Рассылки</a><a href="/broadcast/channels">Каналы</a>{% endif %}
-                {% if not deputy_allowed or 'feedback_inbox' in deputy_allowed %}<a href="/feedback/inbox">Обращения</a>{% endif %}
-                {% if not deputy_allowed or 'tasks' in deputy_allowed %}<a href="/tasks">Текущие дела</a>{% endif %}
+                {% if nav_perms.get('dashboard') %}<a href="/dashboard">Дашборд</a>{% endif %}
+                {% if nav_perms.get('accounting') or nav_perms.get('payments') or nav_perms.get('payment_purposes') or nav_perms.get('report') %}
+                <div class="nav-dropdown">
+                    <span class="nav-dropdown-trigger" aria-haspopup="true" aria-expanded="false">Бухгалтерия ▾</span>
+                    <div class="nav-dropdown-menu" role="menu">
+                        {% if nav_perms.get('accounting') %}<a href="/accounting" role="menuitem">Бухгалтерия</a>{% endif %}
+                        {% if nav_perms.get('payments') %}<a href="/payments" role="menuitem">Платежи</a><a href="/payments/add" role="menuitem">Внести платёж</a>{% endif %}
+                        {% if nav_perms.get('payment_purposes') %}<a href="/payment-purposes" role="menuitem">Назначения</a>{% endif %}
+                        {% if nav_perms.get('report') %}<a href="/report" role="menuitem">Отчёт по платежам</a>{% endif %}
+                    </div>
+                </div>
+                {% endif %}
+                {% if nav_perms.get('students') or nav_perms.get('users') or nav_perms.get('teacher_classes') %}
+                <div class="nav-dropdown">
+                    <span class="nav-dropdown-trigger" aria-haspopup="true" aria-expanded="false">Участники ▾</span>
+                    <div class="nav-dropdown-menu" role="menu">
+                        {% if nav_perms.get('students') %}<a href="/students" role="menuitem">Ученики</a>{% endif %}
+                        {% if nav_perms.get('users') %}<a href="/users" role="menuitem">Пользователи</a>{% endif %}
+                        {% if nav_perms.get('teacher_classes') %}<a href="/teacher-classes" role="menuitem">Классные</a>{% endif %}
+                    </div>
+                </div>
+                {% endif %}
+                {% if nav_perms.get('events') %}<a href="/events">Мероприятия</a>{% endif %}
+                {% if nav_perms.get('nutrition') %}<a href="/nutrition">Питание</a>{% endif %}
+                {% if nav_perms.get('departments') %}<a href="/departments">Отделы</a>{% endif %}
+                {% if nav_perms.get('broadcast') %}<a href="/broadcast">Рассылки</a><a href="/broadcast/channels">Каналы</a>{% endif %}
+                {% if nav_perms.get('feedback_inbox') %}<a href="/feedback/inbox">Обращения</a>{% endif %}
+                {% if nav_perms.get('tasks') %}<a href="/tasks">Текущие дела</a>{% endif %}
                 {% endif %}
                 {% if current_user and current_user.role == 'teacher' %}
                 <a href="/my-class">Мой класс</a><a href="/nutrition">Питание</a><a href="/broadcast">Рассылки</a>
@@ -65,33 +81,35 @@
             <div class="nav-drawer-section">
                 <p class="nav-drawer-section-title">Общее</p>
                 <a href="/profile">Профиль</a>
+                {% if not (current_user and (current_user.role in ('administrator', 'director', 'accountant') or (current_user.role == 'deputy_director' and deputy_allowed))) %}
                 <a href="/messages">Сообщения</a>
+                {% endif %}
                 <a href="/feedback">Обратная связь</a>
                 <a href="/my-tasks">Мои задачи</a>
             </div>
             {% if current_user and (current_user.role in ('administrator', 'director', 'accountant') or (current_user.role == 'deputy_director' and deputy_allowed)) %}
             <div class="nav-drawer-section">
                 <p class="nav-drawer-section-title">Управление</p>
-                {% if not deputy_allowed or 'dashboard' in deputy_allowed %}<a href="/dashboard">Дашборд</a>{% endif %}
-                {% if not deputy_allowed or 'accounting' in deputy_allowed %}<a href="/accounting">Бухгалтерия</a>{% endif %}
-                {% if not deputy_allowed or 'payments' in deputy_allowed %}
-                <a href="/payments">Платежи</a>
-                <a href="/payments/add">Внести платёж</a>
+                {% if nav_perms.get('dashboard') %}<a href="/dashboard">Дашборд</a>{% endif %}
+                {% if nav_perms.get('accounting') or nav_perms.get('payments') or nav_perms.get('payment_purposes') or nav_perms.get('report') %}
+                <p class="nav-drawer-subsection">Бухгалтерия</p>
+                {% if nav_perms.get('accounting') %}<a href="/accounting">Бухгалтерия</a>{% endif %}
+                {% if nav_perms.get('payments') %}<a href="/payments">Платежи</a><a href="/payments/add">Внести платёж</a>{% endif %}
+                {% if nav_perms.get('payment_purposes') %}<a href="/payment-purposes">Назначения платежей</a>{% endif %}
+                {% if nav_perms.get('report') %}<a href="/report">Отчёт по платежам</a>{% endif %}
                 {% endif %}
-                {% if not deputy_allowed or 'payment_purposes' in deputy_allowed %}<a href="/payment-purposes">Назначения платежей</a>{% endif %}
-                {% if not deputy_allowed or 'students' in deputy_allowed %}<a href="/students">Ученики</a>{% endif %}
-                {% if not deputy_allowed or 'users' in deputy_allowed %}<a href="/users">Пользователи</a>{% endif %}
-                {% if not deputy_allowed or 'events' in deputy_allowed %}<a href="/events">Мероприятия</a>{% endif %}
-                {% if not deputy_allowed %}<a href="/nutrition">Питание</a>{% endif %}
-                {% if not deputy_allowed or 'report' in deputy_allowed %}<a href="/report">Отчёт</a>{% endif %}
-                {% if not deputy_allowed or 'departments' in deputy_allowed %}<a href="/departments">Отделы</a>{% endif %}
-                {% if not deputy_allowed or 'teacher_classes' in deputy_allowed %}<a href="/teacher-classes">Классные руководители</a>{% endif %}
-                {% if not deputy_allowed or 'broadcast' in deputy_allowed %}
-                <a href="/broadcast">Рассылки</a>
-                <a href="/broadcast/channels">Каналы рассылки</a>
+                {% if nav_perms.get('students') or nav_perms.get('users') or nav_perms.get('teacher_classes') %}
+                <p class="nav-drawer-subsection">Участники</p>
+                {% if nav_perms.get('students') %}<a href="/students">Ученики</a>{% endif %}
+                {% if nav_perms.get('users') %}<a href="/users">Пользователи</a>{% endif %}
+                {% if nav_perms.get('teacher_classes') %}<a href="/teacher-classes">Классные руководители</a>{% endif %}
                 {% endif %}
-                {% if not deputy_allowed or 'feedback_inbox' in deputy_allowed %}<a href="/feedback/inbox">Входящие обращения</a>{% endif %}
-                {% if not deputy_allowed or 'tasks' in deputy_allowed %}<a href="/tasks">Текущие дела</a>{% endif %}
+                {% if nav_perms.get('events') %}<a href="/events">Мероприятия</a>{% endif %}
+                {% if nav_perms.get('nutrition') %}<a href="/nutrition">Питание</a>{% endif %}
+                {% if nav_perms.get('departments') %}<a href="/departments">Отделы</a>{% endif %}
+                {% if nav_perms.get('broadcast') %}<a href="/broadcast">Рассылки</a><a href="/broadcast/channels">Каналы рассылки</a>{% endif %}
+                {% if nav_perms.get('feedback_inbox') %}<a href="/feedback/inbox">Входящие обращения</a>{% endif %}
+                {% if nav_perms.get('tasks') %}<a href="/tasks">Текущие дела</a>{% endif %}
             </div>
             {% endif %}
             {% if current_user and current_user.role == 'teacher' %}

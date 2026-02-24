@@ -78,4 +78,46 @@
     </tbody>
 </table></div>
 {% endif %}
+
+<h2>Рассылки</h2>
+<p class="hint">Рассылки, которые вам отправили (приходят и в бот в Telegram, и здесь).</p>
+{% if inbox %}
+<div class="messages-list">
+    {% for m in inbox %}
+    <article class="message-card">
+        <header class="message-card-header">
+            <span class="message-from">{{ m.created_by_name or "Школа" }}</span>
+            <time class="message-date">{{ (m.created_at or "")[:16] }}</time>
+        </header>
+        <div class="message-body">{{ m.message_text | e }}</div>
+    </article>
+    {% endfor %}
+</div>
+{% else %}
+<p class="hint">Входящих рассылок пока нет.</p>
+{% endif %}
+
+<h2>Мои обращения</h2>
+<p class="hint">Ваша обратная связь и ответы админки. <a href="/feedback">Обратиться в администрацию</a></p>
+{% if my_feedback %}
+<div class="messages-list">
+    {% for f in my_feedback %}
+    <article class="message-card">
+        <header class="message-card-header">
+            <span>Вы написали</span>
+            <time>{{ (f.created_at or "")[:16] }}</time>
+            <span class="badge badge-{{ f.status }}">{{ f.status }}</span>
+        </header>
+        <div class="message-body">{{ f.message_text | e }}</div>
+        {% if f.admin_reply %}
+        <div style="margin-top: 0.75rem; padding: 0.5rem; background: var(--bg-secondary, #f5f5f5); border-radius: 8px;">
+            <strong>Ответ:</strong> {{ f.admin_reply | e }}
+        </div>
+        {% endif %}
+    </article>
+    {% endfor %}
+</div>
+{% else %}
+<p class="hint">Обращений пока нет.</p>
+{% endif %}
 {% endblock %}

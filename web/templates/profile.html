@@ -64,13 +64,13 @@
 
         {% if user.role == "parent" and students %}
         <section class="profile-children">
-            <h2>Мои дети</h2>
+            <h2>Мои дети {% if students|length > 1 %}({{ students|length }}){% endif %}</h2>
             <ul class="children-list">
                 {% for s in students %}
-                <li>{{ s.full_name }} — {{ s.class_grade|class_grade_display }}</li>
+                <li><a href="/parent#student-{{ s.id }}">{{ s.full_name }}</a> — {{ s.class_grade|class_grade_display }}</li>
                 {% endfor %}
             </ul>
-            <p class="hint">Данные по платежам и питанию — в разделе «Мои дети» (для родителей) или в боте.</p>
+            <p class="hint">Данные по платежам и питанию — в разделе <a href="/parent">Мои дети</a> или в боте.</p>
         </section>
         {% endif %}
     </div>

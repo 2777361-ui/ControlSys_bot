@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Текущие дела</title>
+    <style>body{font-family:system-ui,sans-serif;margin:1rem;} table{border-collapse:collapse;width:100%;} th,td{border:1px solid #ccc;padding:0.4rem 0.6rem;text-align:left;} th{background:#1565c0;color:#fff;}</style>
+</head>
+<body>
+<h1>Текущие дела (общий список)</h1>
+<p>Дата выгрузки: {{ export_date }}</p>
+{% if tasks %}
+<table>
+    <thead><tr><th>Название</th><th>Статус</th><th>Контакт</th><th>Создал</th><th>Обновлено</th></tr></thead>
+    <tbody>
+    {% for t in tasks %}
+    <tr>
+        <td>{{ t.title }}</td>
+        <td>{{ t.status }}</td>
+        <td>{{ (t.contact_info or "")[:60] }}{% if (t.contact_info or "")|length > 60 %}…{% endif %}</td>
+        <td>{{ t.created_by_name or "—" }}</td>
+        <td>{{ (t.updated_at or "")[:10] }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p>Задач нет.</p>
+{% endif %}
+</body>
+</html>

@@ -3,7 +3,11 @@
 {% block content %}
 <h1>Текущие дела</h1>
 <p class="hint">Задачи с контактами для связи. Назначайте группы и исполнителей в карточке задачи. <a href="/tasks/groups">Группы для назначения</a>.</p>
-<p><a href="/tasks/add" class="btn btn-primary">Добавить задачу</a></p>
+<p class="no-print">
+    <a href="/tasks/add" class="btn btn-primary">Добавить задачу</a>
+    <button type="button" class="btn btn-secondary" onclick="window.print();">Печать</button>
+    <a href="/tasks/export" class="btn btn-secondary" download>Скачать в файл</a>
+</p>
 
 <div class="table-wrap">
     <table>

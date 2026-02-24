@@ -3,6 +3,10 @@
 {% block content %}
 <h1>Мои задачи</h1>
 <p class="hint">Задачи, которые вам назначили (или на группу, в которой вы состоите). Контакт для связи указан в карточке.</p>
+<p class="no-print" style="margin-bottom: 1rem;">
+    <button type="button" class="btn btn-secondary" onclick="window.print();">Печать</button>
+    <a href="/my-tasks/export" class="btn btn-secondary" download>Скачать в файл</a>
+</p>
 
 {% if tasks %}
 <div class="messages-list">

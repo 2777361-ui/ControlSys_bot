@@ -36,9 +36,13 @@
             <td>{{ "%.2f"|format(s.balance|default(0)) }}{% if (s.balance|default(0)) < 0 %} <span class="badge badge-warning">долг</span>{% endif %}</td>
             <td>{{ s.parent_name or "—" }} {% if s.parent_email %}({{ s.parent_email }}){% endif %}</td>
             <td>
+                <a href="/students/{{ s.id }}/edit" class="btn btn-secondary">Редактировать</a>
                 {% if show_archived %}
                 <form method="post" action="/students/{{ s.id }}/restore" style="display: inline;">
                     <button type="submit" class="btn btn-primary">Восстановить</button>
+                </form>
+                <form method="post" action="/students/{{ s.id }}/delete" style="display: inline;" onsubmit="return confirm('Удалить ученика из архива? Будут удалены только данные ученика и доступы родителей. Поступления и оплаты останутся для отчётов.');">
+                    <button type="submit" class="btn btn-secondary">Удалить</button>
                 </form>
                 {% else %}
                 <a href="/students/invite?student_id={{ s.id }}" class="btn btn-primary">Пригласить родителя</a>
