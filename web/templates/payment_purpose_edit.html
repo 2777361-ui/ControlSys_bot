@@ -4,10 +4,7 @@
 <h1>Изменить назначение</h1>
 <p><a href="/payment-purposes">← К списку назначений</a></p>
 <form method="post" action="/payment-purposes/{{ purpose.id }}/edit">
-    <div class="form-row">
-        <label for="code">Код (латиница, для хранения в БД)</label>
-        <input type="text" id="code" name="code" value="{{ purpose.code }}" required>
-    </div>
+    <input type="hidden" name="code" value="{{ purpose.code }}">
     <div class="form-row">
         <label for="name">Название (как показывается в форме и отчётах)</label>
         <input type="text" id="name" name="name" value="{{ purpose.name }}" required>

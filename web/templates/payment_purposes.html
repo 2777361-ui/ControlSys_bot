@@ -2,16 +2,12 @@
 {% block title %}Назначения платежей — Школьная система{% endblock %}
 {% block content %}
 <h1>Назначения платежей</h1>
-<p class="hint">Варианты для поля «Назначение» при внесении платежа. Код хранится в БД (латиница), название показывается в форме и отчётах. Удалить можно только назначение, по которому нет платежей.</p>
+<p class="hint">Варианты для поля «Назначение» при внесении платежа. Удалить можно только назначение, по которому нет платежей.</p>
 
 <form method="post" action="/payment-purposes/add" class="form-inline-block" style="margin-bottom: 1.5rem;">
     <div class="form-row" style="display: inline-block; margin-right: 0.5rem;">
-        <label for="code">Код (латиница)</label>
-        <input type="text" id="code" name="code" required placeholder="например education" style="width: 140px;">
-    </div>
-    <div class="form-row" style="display: inline-block; margin-right: 0.5rem;">
         <label for="name">Название</label>
-        <input type="text" id="name" name="name" required placeholder="Обучение" style="width: 160px;">
+        <input type="text" id="name" name="name" required placeholder="Обучение" style="width: 200px;">
     </div>
     <button type="submit" class="btn btn-primary" style="vertical-align: bottom;">Добавить</button>
 </form>
@@ -20,7 +16,6 @@
     <table>
         <thead>
             <tr>
-                <th>Код</th>
                 <th>Название</th>
                 <th>Цена (₽)</th>
                 <th>Начисление</th>
@@ -30,7 +25,6 @@
         <tbody>
             {% for pp in purposes %}
             <tr>
-                <td><code>{{ pp.code }}</code></td>
                 <td>{{ pp.name }}</td>
                 <td>{{ "%.2f"|format(pp.price|default(0)) }}</td>
                 <td>{% if pp.charge_frequency == 'monthly' %}ежемесячно{% elif pp.charge_frequency == 'daily' %}ежедневно{% else %}по внесению{% endif %}</td>

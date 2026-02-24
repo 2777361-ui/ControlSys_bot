@@ -15,15 +15,54 @@ from pathlib import Path
 from typing import Any
 
 
-def _row_to_dict(row: Any) -> dict | None:
-    """Превратить строку из PostgreSQL в dict с датами/временем в виде строк (как в SQLite)."""
+class _RowWrapper:
+    """Строка результата PostgreSQL: доступ по имени row['col'] и по индексу row[0], row[1] (как у sqlite3.Row).
+    Порядок row[0], row[1], ... совпадает с порядком столбцов в SELECT. dict(row) даёт обычный словарь."""
+
+    __slots__ = ("_d", "_vals")
+
+    def __init__(self, d: dict) -> None:
+        self._d = d
+        self._vals = list(d.values()) if d else []
+
+    def __getitem__(self, key: str | int) -> Any:
+        if isinstance(key, int):
+            return self._vals[key] if 0 <= key < len(self._vals) else None
+        return self._d.get(key)
+
+    def __bool__(self) -> bool:
+        return bool(self._d)
+
+    def keys(self):
+        return self._d.keys()
+
+    def values(self):
+        return self._d.values()
+
+    def items(self):
+        return self._d.items()
+
+    def get(self, key: str | int, default: Any = None) -> Any:
+        if isinstance(key, int):
+            return self._vals[key] if 0 <= key < len(self._vals) else default
+        return self._d.get(key, default)
+
+    def __iter__(self):
+        return iter(self._d)
+
+    def __contains__(self, key):
+        return key in self._d
+
+
+def _row_to_dict(row: Any) -> _RowWrapper | None:
+    """Превратить строку из PostgreSQL в обёртку: dict + доступ по индексу row[0] (как в SQLite)."""
     if row is None:
         return None
     d = dict(row)
     for k, v in list(d.items()):
         if isinstance(v, (datetime, date)):
             d[k] = v.isoformat()
-    return d
+    return _RowWrapper(d)
 
 logger = logging.getLogger(__name__)
 

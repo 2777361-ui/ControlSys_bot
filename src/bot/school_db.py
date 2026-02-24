@@ -2881,32 +2881,45 @@ def balance_canteen_for_student(student_id: int) -> float:
     return balance_total_for_student(student_id)
 
 
+def _scalar_float(row, key: str = "s") -> float:
+    """Взять число из строки результата (SQLite Row или PostgreSQL dict). Не зависит от row[0] у dict."""
+    if not row:
+        return 0.0
+    try:
+        if hasattr(row, "keys") and key in row:
+            v = row[key]
+        elif hasattr(row, "values"):
+            v = next(iter(row.values()), None)
+        else:
+            v = row[0]
+    except (KeyError, TypeError, IndexError):
+        v = None
+    return float(v) if v is not None else 0.0
+
+
 def balance_total_for_student(student_id: int) -> float:
     """Сквозной баланс ученика: все подтверждённые пополнения минус все списания (питание ученика и родителя с этого ребёнка, обучение, расходники, продленка и т.д.)."""
     conn = get_connection()
     row = conn.execute(
-        "SELECT COALESCE(SUM(COALESCE(amount_received, amount)), 0) FROM payments WHERE student_id = ? AND status = 'confirmed'",
+        "SELECT COALESCE(SUM(COALESCE(amount_received, amount)), 0) AS s FROM payments WHERE student_id = ? AND status = 'confirmed'",
         (student_id,),
     ).fetchone()
-    income = float(row[0]) if row else 0.0
-    # Списания за питание ученика (student_id)
+    income = _scalar_float(row)
     row2 = conn.execute(
-        "SELECT COALESCE(SUM(amount), 0) FROM nutrition_deductions WHERE student_id = ?",
+        "SELECT COALESCE(SUM(amount), 0) AS s FROM nutrition_deductions WHERE student_id = ?",
         (student_id,),
     ).fetchone()
-    nutrition_student = float(row2[0]) if row2 else 0.0
-    # Списания за питание родителя, отнесённые на этого ученика (charge_to_student_id)
+    nutrition_student = _scalar_float(row2)
     row3 = conn.execute(
-        "SELECT COALESCE(SUM(amount), 0) FROM nutrition_deductions WHERE charge_to_student_id = ?",
+        "SELECT COALESCE(SUM(amount), 0) AS s FROM nutrition_deductions WHERE charge_to_student_id = ?",
         (student_id,),
     ).fetchone()
-    nutrition_charge_to = float(row3[0]) if row3 else 0.0
-    # Списания по студенческим услугам (обучение, расходники, продленка и т.д.)
+    nutrition_charge_to = _scalar_float(row3)
     row4 = conn.execute(
-        "SELECT COALESCE(SUM(amount), 0) FROM student_charges WHERE student_id = ?",
+        "SELECT COALESCE(SUM(amount), 0) AS s FROM student_charges WHERE student_id = ?",
         (student_id,),
     ).fetchone()
-    charges = float(row4[0]) if row4 else 0.0
+    charges = _scalar_float(row4)
     return income - nutrition_student - nutrition_charge_to - charges
 
 

@@ -1237,12 +1237,12 @@ async def payment_purposes_page(request: Request, user_id: int = Depends(require
 
 @app.post("/payment-purposes/add")
 async def payment_purpose_add(
-    code: str = Form(...),
     name: str = Form(...),
     user_id: int = Depends(require_permission("payment_purposes")),
 ):
-    """Добавить вариант назначения. Код — латиница/цифры (например education), название — как показывать (Обучение)."""
-    code = code.strip().lower().replace(" ", "_")
+    """Добавить вариант назначения. Код генерируется из названия (латиница), название показывается в форме и отчётах."""
+    # Код из названия: транслит-подобный slug (только буквы, цифры, подчёркивание)
+    code = name.strip().lower().replace(" ", "_")
     code = "".join(c for c in code if c.isalnum() or c == "_") or "other"
     if not name.strip():
         raise HTTPException(status_code=400, detail="Укажите название")
