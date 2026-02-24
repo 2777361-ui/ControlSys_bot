@@ -543,6 +543,29 @@ def _init_db_postgres() -> None:
                 conn.rollback()
             except Exception:
                 pass
+    # Таблица настроек (дедлайн питания и т.д.) — могла отсутствовать в старых БД
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'app_settings'"
+        ).fetchone()
+        if not row:
+            conn.execute("""
+                CREATE TABLE app_settings (
+                    key   TEXT PRIMARY KEY,
+                    value TEXT NOT NULL DEFAULT ''
+                )
+            """)
+            conn.execute(
+                "INSERT INTO app_settings (key, value) VALUES ('nutrition_cutoff_hour', '8'), ('nutrition_cutoff_minute', '0'), ('nutrition_cutoff_timezone', 'Asia/Yekaterinburg')"
+            )
+            conn.commit()
+            logger.info("PostgreSQL: создана таблица app_settings")
+    except Exception as e:
+        logger.warning("PostgreSQL: не удалось создать app_settings: %s", e)
+        try:
+            conn.rollback()
+        except Exception:
+            pass
     conn.commit()
     logger.info("Таблицы PostgreSQL (Supabase) готовы")
 
@@ -4007,9 +4030,13 @@ def parent_report_mark_dismissed(report_id: int, resolved_by_user_id: int) -> bo
 # --- Настройки приложения (дедлайн редактирования питания) ---
 
 def app_settings_get(key: str) -> str:
-    """Значение настройки по ключу (пустая строка если нет)."""
+    """Значение настройки по ключу (пустая строка если нет или таблица отсутствует)."""
     conn = get_connection()
-    row = conn.execute("SELECT value FROM app_settings WHERE key = ?", (key,)).fetchone()
+    try:
+        row = conn.execute("SELECT value FROM app_settings WHERE key = ?", (key,)).fetchone()
+    except Exception as e:
+        logger.warning("app_settings_get: %s", e)
+        return ""
     if not row:
         return ""
     return (row.get("value") if hasattr(row, "get") else row[0]) or ""
