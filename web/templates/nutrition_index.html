@@ -3,10 +3,32 @@
 {% block content %}
 <h1>Питание</h1>
 <p><strong>Расклад для столовой</strong> — кто на завтраке/обеде/ужине на дату (по планам родителей).</p>
+
+<div class="canteen-date-nav" style="margin-bottom: 1.5rem;">
+    <p class="canteen-date-nav-label">Быстрый выбор даты:</p>
+    <div class="canteen-date-buttons">
+        {% for d in date_buttons_back %}
+        <a href="/nutrition/canteen?date={{ d }}" class="btn btn-outline{% if d == today_iso %} canteen-date-today{% endif %}">{{ d[8:10] }}.{{ d[5:7] }}</a>
+        {% endfor %}
+        <a href="/nutrition/canteen?date={{ today_iso }}" class="btn btn-primary canteen-date-today">{{ today_iso[8:10] }}.{{ today_iso[5:7] }} (сегодня)</a>
+        {% for d in date_buttons_forward %}
+        <a href="/nutrition/canteen?date={{ d }}" class="btn btn-outline{% if d == today_iso %} canteen-date-today{% endif %}">{{ d[8:10] }}.{{ d[5:7] }}</a>
+        {% endfor %}
+    </div>
+    <form method="get" action="/nutrition/canteen" class="canteen-date-range-form" style="margin-top: 0.75rem;">
+        <span class="canteen-date-range-label">Свой диапазон:</span>
+        <label for="date_from">от</label>
+        <input type="date" id="date_from" name="date_from">
+        <label for="date_to">до</label>
+        <input type="date" id="date_to" name="date_to">
+        <button type="submit" class="btn btn-secondary">Показать расклад</button>
+    </form>
+</div>
+
 <form method="get" action="/nutrition/canteen" style="margin-bottom: 1.5rem;">
     <div class="form-row">
-        <label for="date">Дата</label>
-        <input type="date" id="date" name="date" required>
+        <label for="date">Или укажите одну дату</label>
+        <input type="date" id="date" name="date">
     </div>
     <button type="submit" class="btn btn-primary">Расклад на дату</button>
 </form>

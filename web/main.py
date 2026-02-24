@@ -2087,13 +2087,31 @@ async def broadcast_submit(
 
 @app.get("/nutrition", response_class=HTMLResponse)
 async def nutrition_index(request: Request, user_id: int = Depends(require_teacher_or_canteen)):
-    """Выбор даты: расклад для столовой или ввод данных на дату."""
+    """Выбор даты: расклад для столовой (кнопки дат и свой диапазон)."""
+    from datetime import date as date_type, timedelta, datetime
+    from zoneinfo import ZoneInfo
     user = school_db.user_by_id(user_id)
     is_staff = user and user.get("role") in ("administrator", "director", "accountant")
     can_edit_nutrition_settings = user and user.get("role") in ("administrator", "director")
+    today = date_type.today()
+    _, _, tz_str = school_db.nutrition_cutoff_get()
+    try:
+        tz = ZoneInfo(tz_str)
+    except Exception:
+        tz = ZoneInfo("Asia/Yekaterinburg")
+    today_iso = datetime.now(tz).strftime("%Y-%m-%d")
+    date_buttons_back = [(today - timedelta(days=k)).isoformat() for k in range(5, 0, -1)]
+    date_buttons_forward = [(today + timedelta(days=k)).isoformat() for k in range(1, 6)]
     return templates.TemplateResponse(
         "nutrition_index.html",
-        {"request": request, "is_staff": is_staff, "can_edit_nutrition_settings": can_edit_nutrition_settings},
+        {
+            "request": request,
+            "is_staff": is_staff,
+            "can_edit_nutrition_settings": can_edit_nutrition_settings,
+            "today_iso": today_iso,
+            "date_buttons_back": date_buttons_back,
+            "date_buttons_forward": date_buttons_forward,
+        },
     )
 
 
