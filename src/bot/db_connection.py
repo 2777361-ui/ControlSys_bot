@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import sqlite3
 from datetime import date, datetime
 from pathlib import Path
@@ -66,11 +67,17 @@ def _row_to_dict(row: Any) -> _RowWrapper | None:
 
 logger = logging.getLogger(__name__)
 
-# Локальный путь к SQLite (если не используется PostgreSQL)
+# Локальный путь к SQLite (если не используется PostgreSQL).
+# SQLITE_DB_PATH — путь к файлу (например /data/school.db на Amvera для постоянного хранилища).
 _DEFAULT_DB_DIR = Path(__file__).resolve().parents[2] / "data"
 _DEFAULT_DB_PATH = _DEFAULT_DB_DIR / "school.db"
-_DB_DIR = _DEFAULT_DB_DIR
-_DB_PATH = _DEFAULT_DB_PATH
+_sqlite_path_env = os.environ.get("SQLITE_DB_PATH", "").strip()
+if _sqlite_path_env:
+    _DB_PATH = Path(_sqlite_path_env)
+    _DB_DIR = _DB_PATH.parent
+else:
+    _DB_DIR = _DEFAULT_DB_DIR
+    _DB_PATH = _DEFAULT_DB_PATH
 
 _connection: sqlite3.Connection | Any = None  # SQLite или PgConnection
 

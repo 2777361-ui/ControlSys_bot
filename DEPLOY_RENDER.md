@@ -180,8 +180,8 @@ git push origin main
    - **Name:** например `school-web`.
    - **Environment:** **Python 3**.
    - **Build Command:** `pip install -r requirements.txt`
-   - **Start Command:** `uvicorn web.main:app --host 0.0.0.0 --port $PORT`
-   - **Root Directory:** оставь пустым (корень репозитория).
+   - **Start Command:** обязательно `uvicorn web.main:app --host 0.0.0.0 --port $PORT` (именно **$PORT** — Render выдаёт порт сам; без этого будет «No open ports detected»).
+   - **Root Directory:** если проект в подпапке — укажи её (например `src`); иначе оставь пустым (корень репозитория).
 4. В **Environment** добавь переменные (те же, что у бота, кроме `BOT_TOKEN` — для веба он не нужен):
    - **`DATABASE_URL`** (Secret) — строка Session mode из Supabase, как у бота.
    - **`WEB_SECRET_KEY`** (Secret) — своя случайная строка для JWT сессий (например `openssl rand -hex 32`).

@@ -108,6 +108,11 @@ PAYMENT_STATUS_REJECTED = "rejected"
 def _init_db_postgres() -> None:
     """Создание таблиц в PostgreSQL (Supabase). Схема в финальном виде, без миграций SQLite."""
     conn = get_connection()
+    # Короткий таймаут на время старта: ALTER при необходимости не должен блокировать (Render ждёт открытия порта)
+    try:
+        conn.execute("SET LOCAL statement_timeout = '15s'")
+    except Exception:
+        pass
     # users — все колонки после миграций (profile, deputy и т.д.)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS users (
@@ -2511,20 +2516,13 @@ _students_archived_column_ensured = False
 
 
 def _ensure_students_archived_column_pg() -> None:
-    """Для PostgreSQL: если в таблице students нет колонок archived, deleted_at, photo_path, comment — добавить."""
+    """Для PostgreSQL: проверяем наличие колонок archived, deleted_at и кэшируем. ALTER не вызываем — на Supabase/Render он часто упирается в statement timeout; колонки добавляют вручную в SQL Editor."""
     global _students_archived_column_ensured, _pg_students_archived_column_exists, _pg_students_deleted_at_column_exists
     if not is_postgres() or _students_archived_column_ensured:
         return
     conn = get_connection()
     try:
-        # Увеличиваем таймаут на время ALTER (на больших таблицах или под нагрузкой иначе statement timeout)
-        conn.execute("SET LOCAL statement_timeout = '300s'")
-        for col, typ, default in [
-            ("archived", "BOOLEAN NOT NULL DEFAULT FALSE", None),
-            ("deleted_at", "TIMESTAMPTZ", None),
-            ("photo_path", "TEXT", None),
-            ("comment", "TEXT", None),
-        ]:
+        for col in ("archived", "deleted_at"):
             row = conn.execute(
                 """
                 SELECT 1 FROM information_schema.columns
@@ -2532,23 +2530,23 @@ def _ensure_students_archived_column_pg() -> None:
                 """,
                 (col,),
             ).fetchone()
-            if not row:
-                conn.execute(f"ALTER TABLE students ADD COLUMN {col} {typ}")
-                conn.commit()
-                logger.info("PostgreSQL: добавлена колонка students.%s", col)
-                if col == "archived":
-                    _pg_students_archived_column_exists = True
-                if col == "deleted_at":
-                    _pg_students_deleted_at_column_exists = True
-        # Помечаем миграцию выполненной только если все колонки проверены/добавлены без ошибки
-        _students_archived_column_ensured = True
+            if col == "archived":
+                _pg_students_archived_column_exists = bool(row)
+            else:
+                _pg_students_deleted_at_column_exists = bool(row)
+        if not _pg_students_archived_column_exists or not _pg_students_deleted_at_column_exists:
+            logger.info(
+                "PostgreSQL: колонки students (archived=%s, deleted_at=%s). Если нужны архив и удаление — добавьте вручную в SQL Editor: ALTER TABLE students ADD COLUMN IF NOT EXISTS archived BOOLEAN NOT NULL DEFAULT FALSE; ALTER TABLE students ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ; + photo_path TEXT, comment TEXT",
+                _pg_students_archived_column_exists,
+                _pg_students_deleted_at_column_exists,
+            )
     except Exception as e:
-        logger.warning("PostgreSQL: не удалось добавить колонки students: %s", e)
+        logger.warning("PostgreSQL: проверка колонок students: %s", e)
         try:
             conn.rollback()
         except Exception:
             pass
-        # Не ставим _students_archived_column_ensured = True, чтобы при следующем запросе повторить попытку
+    _students_archived_column_ensured = True
 
 
 def _students_not_deleted_condition(table_alias: str = "s") -> str:

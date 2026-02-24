@@ -199,7 +199,7 @@ uvicorn web.main:app --reload --host 0.0.0.0 --port 8001
 ## База данных
 
 - **Локально:** по умолчанию используется **SQLite** (`data/school.db`) — пользователи, ученики, платежи, мероприятия, напоминания, рассылки. Таблицы создаются при первом запуске.
-- **Продакшен (Render и др.):** чтобы данные не пропадали при перезапуске, задай переменную окружения **`DATABASE_URL`** — строку подключения к **PostgreSQL**. Например, **Supabase**: зайди в проект → Project Settings → Database → Connection string (URI), скопируй и подставь пароль. В Render добавь `DATABASE_URL` в Environment (Secret). При первом запуске таблицы создадутся в Supabase автоматически. Подробнее — в [DEPLOY_RENDER.md](DEPLOY_RENDER.md).
+- **Продакшен (Amvera, Render и др.):** чтобы данные не пропадали при перезапуске, задай переменную окружения **`DATABASE_URL`** — строку подключения к **PostgreSQL**. Например, **Supabase**: зайди в проект → Project Settings → Database → Connection string (URI), скопируй и подставь пароль. В Amvera/Render добавь `DATABASE_URL` в переменные (Secret). При первом запуске таблицы создадутся автоматически. Подробнее: [DEPLOY_AMVERA.md](DEPLOY_AMVERA.md), [DEPLOY_RENDER.md](DEPLOY_RENDER.md).
 - **Бэкап и перенос БД** (например, на Amvera или другой сервер): см. [BACKUP_MIGRATION.md](BACKUP_MIGRATION.md) — как делать дамп PostgreSQL/SQLite, чем открыть и как восстановить на новом хосте.
 
 ## Роли и авторизация
@@ -289,12 +289,12 @@ python3 -m pytest tests/ -v
 
 По логам можно понять, кто что нажал и где произошла ошибка.
 
+## Деплой на Amvera (рекомендуется)
+
+Полная инструкция: **[DEPLOY_AMVERA.md](DEPLOY_AMVERA.md)**.
+
+**Одно приложение** на Amvera: в одном контейнере работают веб-интерфейс (порт 80) и Telegram-бот, общая БД (`DATABASE_URL`). В корне — `amvera.yml` и `start.sh`. Таблицы создаются при первом запуске автоматически.
+
 ## Деплой на Render
 
-Инструкция по запуску бота на [Render.com](https://render.com) как Background Worker — в файле **[DEPLOY_RENDER.md](DEPLOY_RENDER.md)**.
-
-Кратко: New → Background Worker → подключить репозиторий → Build Command: `pip install -r requirements.txt`, Start Command: `python app.py` → в Environment добавить `BOT_TOKEN` (Secret). После деплоя бот будет работать в облаке.
-
-## Деплой на Amvera
-
-В настройках приложения задай переменные `BOT_TOKEN`, при необходимости `WEB_SECRET_KEY`. Запуск бота: `python app.py`. Веб-интерфейс при необходимости разверни отдельно (например, через другой сервис с поддержкой Python/uvicorn).
+Инструкция по запуску на [Render.com](https://render.com) (Background Worker + при необходимости Web Service) — в файле **[DEPLOY_RENDER.md](DEPLOY_RENDER.md)**.
