@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Мероприятия — Школьная система{% endblock %}
+{% block content %}
+<h1>Мероприятия</h1>
+<p><a href="/events/add" class="btn btn-primary">Добавить мероприятие</a></p>
+<div class="table-wrap"><table>
+    <thead>
+        <tr>
+            <th>Название</th>
+            <th>Дата</th>
+            <th>Взнос</th>
+            <th>Описание</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for e in events %}
+        <tr>
+            <td>{{ e.name }}</td>
+            <td>{{ e.event_date or "—" }}</td>
+            <td>{% if e.amount_required %}{{ "%.2f"|format(e.amount_required) }} ₽{% else %}—{% endif %}</td>
+            <td>{{ (e.description or "")[:50] }}{% if (e.description or "")|length > 50 %}...{% endif %}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table></div>
+{% endblock %}

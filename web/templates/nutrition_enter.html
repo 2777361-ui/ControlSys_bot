@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Питание {{ date }} — Школьная система{% endblock %}
+{% block content %}
+<h1>Питание на {{ date }}</h1>
+<p><a href="/nutrition">Выбрать другую дату</a></p>
+<form method="post" action="/nutrition/enter">
+    <input type="hidden" name="date" value="{{ date }}">
+    {% if students_grouped and (students_grouped.my_class_students or students_grouped.substitute_classes) %}
+    {% if students_grouped.my_class_students %}
+    <h2>Мой класс ({{ students_grouped.my_class_grade|class_grade_display }})</h2>
+    <div class="table-wrap"><table>
+        <thead>
+            <tr><th>Ученик</th><th>Завтрак</th><th>Обед</th><th>Полдник</th><th>Комментарий</th></tr>
+        </thead>
+        <tbody>
+            {% for s in students_grouped.my_class_students %}
+            {% set rec = existing.get(s.id) or {} %}
+            <tr>
+                <td>{{ s.full_name }}</td>
+                <td><input type="checkbox" name="breakfast_{{ s.id }}" {% if rec.get('had_breakfast') %}checked{% endif %}</td>
+                <td><input type="checkbox" name="lunch_{{ s.id }}" {% if rec.get('had_lunch') %}checked{% endif %}</td>
+                <td><input type="checkbox" name="snack_{{ s.id }}" {% if rec.get('had_snack') %}checked{% endif %}</td>
+                <td><input type="text" name="comment_{{ s.id }}" value="{{ rec.get('comment') or '' }}" style="max-width: 150px;"></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table></div>
+    {% endif %}
+    {% for group in students_grouped.substitute_classes %}
+    <h2>{{ group.label }}</h2>
+    <div class="table-wrap"><table>
+        <thead>
+            <tr><th>Ученик</th><th>Завтрак</th><th>Обед</th><th>Полдник</th><th>Комментарий</th></tr>
+        </thead>
+        <tbody>
+            {% for s in group.students %}
+            {% set rec = existing.get(s.id) or {} %}
+            <tr>
+                <td>{{ s.full_name }}</td>
+                <td><input type="checkbox" name="breakfast_{{ s.id }}" {% if rec.get('had_breakfast') %}checked{% endif %}</td>
+                <td><input type="checkbox" name="lunch_{{ s.id }}" {% if rec.get('had_lunch') %}checked{% endif %}</td>
+                <td><input type="checkbox" name="snack_{{ s.id }}" {% if rec.get('had_snack') %}checked{% endif %}</td>
+                <td><input type="text" name="comment_{{ s.id }}" value="{{ rec.get('comment') or '' }}" style="max-width: 150px;"></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table></div>
+    {% endfor %}
+    {% else %}
+    <div class="table-wrap"><table>
+        <thead>
+            <tr>
+                <th>Ученик</th>
+                <th>Класс</th>
+                <th>Завтрак</th>
+                <th>Обед</th>
+                <th>Полдник</th>
+                <th>Комментарий</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for s in students %}
+            {% set rec = existing.get(s.id) or {} %}
+            <tr>
+                <td>{{ s.full_name }}</td>
+                <td>{{ s.class_grade|class_grade_display }}</td>
+                <td><input type="checkbox" name="breakfast_{{ s.id }}" {% if rec.get('had_breakfast') %}checked{% endif %}</td>
+                <td><input type="checkbox" name="lunch_{{ s.id }}" {% if rec.get('had_lunch') %}checked{% endif %}</td>
+                <td><input type="checkbox" name="snack_{{ s.id }}" {% if rec.get('had_snack') %}checked{% endif %}</td>
+                <td><input type="text" name="comment_{{ s.id }}" value="{{ rec.get('comment') or '' }}" style="max-width: 150px;"></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table></div>
+    {% endif %}
+    <button type="submit" class="btn btn-primary">Сохранить</button>
+</form>
+{% endblock %}

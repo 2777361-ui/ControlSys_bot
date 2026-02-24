@@ -25,6 +25,9 @@ htmlcov/
 logs/
 data/
 
+# Загруженные аватары (веб-профиль)
+web/static/uploads/
+
 # IDE и ОС
 .idea/
 .vscode/

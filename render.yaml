@@ -1,0 +1,15 @@
+# Конфигурация деплоя на Render.com
+# Деплой: подключи репозиторий в Render → New → Background Worker → указать этот файл или задать параметры вручную
+# В проде WEB_SECRET_KEY должен быть задан (здесь generateValue: true подставляет случайное значение).
+
+services:
+  - type: worker
+    name: school-telegram-bot
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python app.py
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: WEB_SECRET_KEY
+        generateValue: true  # в проде не использовать дефолт из кода — задать или сгенерировать

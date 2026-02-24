@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Ручное списание за питание — Школьная система{% endblock %}
+{% block content %}
+<h1>Ручное списание (расходная часть)</h1>
+<p class="hint">Внести списание по ученику — сумма спишется с баланса столовой и отобразится у родителя в отчёте по питанию.</p>
+{% if request.query_params.get("ok") %}<p class="success">Списание внесено.</p>{% endif %}
+<form method="post" action="/nutrition/deduction-add">
+    <div class="form-row">
+        <label for="student_id">Ученик</label>
+        <select id="student_id" name="student_id" required>
+            <option value="">— Выберите ученика —</option>
+            {% for s in students %}
+            <option value="{{ s.id }}">{{ s.full_name }} ({{ s.class_grade|class_grade_display }})</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="form-row">
+        <label for="deduction_date">Дата списания</label>
+        <input type="date" id="deduction_date" name="deduction_date" required>
+    </div>
+    <div class="form-row">
+        <label for="amount">Сумма (₽)</label>
+        <input type="number" id="amount" name="amount" step="0.01" min="0.01" required>
+    </div>
+    <div class="form-row">
+        <label for="reason">Причина (отобразится у родителя)</label>
+        <input type="text" id="reason" name="reason" placeholder="Например: доп. питание, штраф">
+    </div>
+    <button type="submit" class="btn btn-primary">Внести списание</button>
+</form>
+<script>
+(function(){ var d = new Date(); document.getElementById('deduction_date').value = d.toISOString().slice(0,10); })();
+</script>
+<p><a href="/nutrition">← К разделу питания</a></p>
+{% endblock %}

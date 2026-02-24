@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Пользователи — Школьная система{% endblock %}
+{% block content %}
+<h1>Пользователи</h1>
+<p><a href="/users/add" class="btn btn-primary">Добавить пользователя</a></p>
+<div class="table-wrap"><table>
+    <thead>
+        <tr>
+            <th>ФИО</th>
+            <th>Роль</th>
+            <th>Email</th>
+            <th>Telegram</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for u in users %}
+        <tr>
+            <td>{{ u.full_name }}</td>
+            <td>
+                {% if u.role == "administrator" %}Администратор{% elif u.role == "director" %}Директор{% elif u.role == "deputy_director" %}Заместитель директора{% elif u.role == "accountant" %}Бухгалтер{% elif u.role == "parent" %}Родитель{% elif u.role == "canteen" %}Столовая{% else %}Учитель{% endif %}
+            </td>
+            <td>{{ u.email or "—" }}</td>
+            <td>{{ "✅" if u.telegram_id else "—" }}</td>
+            <td><a href="/users/{{ u.id }}/edit">Изменить / привязать Telegram</a></td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table></div>
+{% endblock %}

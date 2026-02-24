@@ -1,0 +1,16 @@
+{% extends "parent_base.html" if is_parent else "base.html" %}
+{% block title %}Обратная связь — Школьная система{% endblock %}
+{% block content %}
+<h1>Обратная связь</h1>
+<p class="hint">Напишите сообщение в админку. Ответ вы увидите в разделе <a href="/messages">Сообщения</a> (блок «Мои обращения»).</p>
+{% if request.query_params.get("sent") == "1" %}<p class="success">Сообщение отправлено.</p>{% endif %}
+
+<form method="post" action="/feedback">
+    <div class="form-row">
+        <label for="message_text">Текст сообщения</label>
+        <textarea id="message_text" name="message_text" rows="5" required placeholder="Опишите вопрос или предложение..."></textarea>
+    </div>
+    <button type="submit" class="btn btn-primary">Отправить</button>
+</form>
+<p class="hint" style="margin-top: 1rem;"><a href="/messages">Мои обращения и ответы</a></p>
+{% endblock %}

@@ -1,0 +1,71 @@
+{% extends "parent_base.html" %}
+{% block title %}Отчёт по питанию за {{ month or 'месяц' }} — Школьная система{% endblock %}
+{% block content %}
+<h1>Отчёт по питанию за месяц</h1>
+<p class="hint">Когда и сколько потрачено на питание по каждому ребёнку. Здесь же отображаются ручные списания (расходная часть), которые вносит бухгалтер.</p>
+<form method="get" action="/parent/nutrition-report" style="margin-bottom: 1rem;">
+    <label for="month">Месяц</label>
+    <input type="month" id="month" name="month" value="{{ month or '' }}">
+    <button type="submit" class="btn btn-primary">Показать</button>
+</form>
+
+{% if month %}
+{% for r in report %}
+<section class="student-block">
+    <h2>{{ r.student.full_name }} — {{ r.student.class_grade|class_grade_display }}</h2>
+    <p><strong>Баланс столовой:</strong> {{ "%.2f"|format(r.balance) }} ₽</p>
+    <p>Пополнения за период: {{ "%.2f"|format(r.total_payments) }} ₽ | Списания за период: {{ "%.2f"|format(r.total_deductions) }} ₽</p>
+    {% if r.deductions %}
+    <p><strong>Списания (когда и сколько):</strong></p>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr><th>Дата</th><th>Сумма</th><th>Завтрак</th><th>Обед</th><th>Ужин</th><th>Примечание</th></tr>
+            </thead>
+            <tbody>
+                {% for d in r.deductions %}
+                <tr>
+                    <td>{{ d.deduction_date }}</td>
+                    <td>{{ "%.2f"|format(d.amount) }} ₽</td>
+                    <td>{% if d.breakfast_amt %}{{ "%.2f"|format(d.breakfast_amt) }}{% else %}—{% endif %}</td>
+                    <td>{% if d.lunch_amt %}{{ "%.2f"|format(d.lunch_amt) }}{% else %}—{% endif %}</td>
+                    <td>{% if d.dinner_amt %}{{ "%.2f"|format(d.dinner_amt) }}{% else %}—{% endif %}</td>
+                    <td>{% if d.is_manual and d.reason %}{{ d.reason }}{% elif d.is_manual %}Ручное списание{% else %}—{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+    {% if r.payments %}
+    <p><strong>Пополнения в этом месяце:</strong></p>
+    <ul>
+        {% for p in r.payments %}
+        <li>{{ (p.created_at or "")[:10] }} — {{ "%.2f"|format(p.amount_received or p.amount or 0) }} ₽ ({{ p.status }})</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+</section>
+{% endfor %}
+
+{% if parent_deductions %}
+<section class="student-block">
+    <h2>Мои списания (я на питании)</h2>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr><th>Дата</th><th>Сумма</th></tr>
+            </thead>
+            <tbody>
+                {% for d in parent_deductions %}
+                <tr><td>{{ d.deduction_date }}</td><td>{{ "%.2f"|format(d.amount) }} ₽</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endif %}
+{% endif %}
+
+<p><a href="/parent">← Мои дети</a> | <a href="/parent/nutrition">План питания</a></p>
+{% endblock %}

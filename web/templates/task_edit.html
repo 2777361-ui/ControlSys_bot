@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Новая задача — Текущие дела{% endblock %}
+{% block content %}
+<h1>Новая задача</h1>
+<form method="post" action="/tasks/add">
+    <div class="form-row">
+        <label for="title">Название</label>
+        <input type="text" id="title" name="title" required>
+    </div>
+    <div class="form-row">
+        <label for="description">Описание</label>
+        <textarea id="description" name="description" rows="4"></textarea>
+    </div>
+    <div class="form-row">
+        <label for="contact_info">Контакт для связи</label>
+        <input type="text" id="contact_info" name="contact_info" placeholder="Телефон, email, ФИО">
+    </div>
+    <button type="submit" class="btn btn-primary">Создать</button>
+    <a href="/tasks" class="btn btn-secondary">Отмена</a>
+</form>
+{% endblock %}

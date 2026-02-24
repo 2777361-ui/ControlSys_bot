@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Дашборд — Школьная система{% endblock %}
+{% block content %}
+<h1>Дашборд</h1>
+<h2>Платежи, ожидающие подтверждения</h2>
+{% if not pending_payments %}
+<p>Нет неподтверждённых платежей.</p>
+{% else %}
+<div class="table-wrap"><table>
+    <thead>
+        <tr>
+            <th>Дата</th>
+            <th>Ученик</th>
+            <th>Класс</th>
+            <th>Сумма</th>
+            <th>Назначение</th>
+            <th>Действия</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for p in pending_payments %}
+        <tr>
+            <td>{{ (p.created_at or "")[:10] }}</td>
+            <td>{{ p.student_name }}</td>
+            <td>{{ p.class_grade|class_grade_display }}</td>
+            <td>{{ "%.2f"|format(p.amount) }} ₽</td>
+            <td>{{ purpose_options.get(p.purpose, p.purpose) }}</td>
+            <td>
+                <form method="post" action="/payment/{{ p.id }}/confirm" style="display:inline;">
+                    <input type="text" name="comment" placeholder="Комментарий" style="width:120px;">
+                    <button type="submit" class="btn btn-primary">Подтвердить</button>
+                </form>
+                <form method="post" action="/payment/{{ p.id }}/reject" style="display:inline; margin-left: 0.5rem;">
+                    <input type="text" name="comment" placeholder="Причина отклонения" style="width:120px;">
+                    <button type="submit" class="btn btn-danger">Отклонить</button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table></div>
+{% endif %}
+<p><a href="/payments">Вся история платежей</a></p>
+
+<h2>Родители сообщили: «Я совершил платёж»</h2>
+<p>Если родитель оплатил в кассу, но платёж не занесён — проверьте и внесите платёж или отметьте «Проверено».</p>
+{% if not parent_reports %}
+<p>Нет новых сообщений.</p>
+{% else %}
+<div class="table-wrap"><table>
+    <thead>
+        <tr>
+            <th>Дата</th>
+            <th>Родитель</th>
+            <th>Ученик</th>
+            <th>Класс</th>
+            <th>Действия</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for r in parent_reports %}
+        <tr>
+            <td>{{ (r.reported_at or "")[:16] }}</td>
+            <td>{{ r.parent_name }}</td>
+            <td>{{ r.student_name }}</td>
+            <td>{{ r.class_grade|class_grade_display }}</td>
+            <td>
+                <a href="/payments/add?student_id={{ r.student_id }}" class="btn btn-primary">Внести платёж</a>
+                <form method="post" action="/parent-reports/{{ r.id }}/entered" style="display:inline; margin-left: 0.5rem;">
+                    <button type="submit" class="btn btn-primary">Платёж уже внесён</button>
+                </form>
+                <form method="post" action="/parent-reports/{{ r.id }}/dismiss" style="display:inline; margin-left: 0.5rem;">
+                    <button type="submit" class="btn btn-secondary">Проверено, отклонить</button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table></div>
+{% endif %}
+{% endblock %}

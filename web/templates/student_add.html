@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Добавить ученика — Школьная система{% endblock %}
+{% block content %}
+<h1>Добавить ученика</h1>
+
+<p class="hint" style="margin-bottom: 1rem;">
+    <strong>Родителя можно не выбирать.</strong> Сохраните ученика, затем в списке учеников нажмите <strong>«Пригласить родителя»</strong> — получите ссылку и отправьте её родителю для регистрации.
+</p>
+
+<form method="post" action="/students/add">
+    <div class="form-row">
+        <label for="full_name">ФИО ученика</label>
+        <input type="text" id="full_name" name="full_name" required>
+    </div>
+    <div class="form-row">
+        <label for="class_grade">Класс</label>
+        <select id="class_grade" name="class_grade" required>
+            <option value="0">Детский сад</option>
+            {% for g in range(1, 12) %}
+            <option value="{{ g }}" {% if g == 1 %}selected{% endif %}>{{ g }} класс</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="form-row">
+        <label for="parent_id">Родитель (необязательно)</label>
+        <select id="parent_id" name="parent_id">
+            <option value="">— Без родителя (пригласить по ссылке позже) —</option>
+            {% for p in parents %}
+            <option value="{{ p.id }}">{{ p.full_name }}{% if p.email %} ({{ p.email }}){% endif %}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <button type="submit" class="btn btn-primary">Сохранить</button>
+    <a href="/students" class="btn btn-secondary">Отмена</a>
+</form>
+
+<p class="hint" style="margin-top: 1rem;">
+    <a href="/students">Перейти к списку учеников</a> — там у каждого ученика есть кнопка «Пригласить родителя» для получения ссылки-приглашения.
+</p>
+{% endblock %}

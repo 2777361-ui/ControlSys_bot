@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Вход — Школьная система{% endblock %}
+{% block content %}
+<h1>Вход в систему</h1>
+{% if request.query_params.get("registered") == "1" %}
+<p class="success">Регистрация прошла успешно. Войдите, используя email и пароль.</p>
+{% endif %}
+{% if request.query_params.get("reset") == "1" %}
+<p class="success">Пароль успешно изменён. Войдите с новым паролем.</p>
+{% endif %}
+{% if request.query_params.get("error") == "user" %}
+<p class="error">Пользователь с таким email не найден.</p>
+{% elif request.query_params.get("error") == "password" %}
+<p class="error">Неверный пароль.</p>
+{% elif request.query_params.get("error") == "no_password" %}
+<p class="error">Для этого аккаунта пароль не задан. Обратитесь к администратору.</p>
+{% endif %}
+<form method="post" action="/login">
+    <div class="form-row">
+        <label for="email">Email</label>
+        <input type="email" id="email" name="email" required placeholder="email@example.com">
+    </div>
+    <div class="form-row">
+        <label for="password">Пароль</label>
+        <input type="password" id="password" name="password" required>
+    </div>
+    <button type="submit" class="btn btn-primary">Войти</button>
+</form>
+<p class="hint"><a href="/forgot-password">Забыли пароль?</a> — на почту придёт ссылка для сброса.</p>
+<p class="hint">Вход для сотрудников школы (директор, бухгалтер, столовая, учитель) и родителей. Родителям: зарегистрируйтесь по ссылке-приглашению от школы, затем войдите здесь.</p>
+{% endblock %}

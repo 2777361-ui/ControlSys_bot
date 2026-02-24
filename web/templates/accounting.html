@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block title %}Бухгалтерия — Школьная система{% endblock %}
+{% block content %}
+<h1>Бухгалтерия</h1>
+<p class="hint">Учебный год: с сентября по июль. Период по умолчанию — текущий учебный год ({{ school_year_start }} – {{ school_year_end }}).</p>
+
+<section class="accounting-summary">
+    <h2>Баланс и прогноз</h2>
+    <ul class="summary-list">
+        <li><strong>Входящее сальдо</strong> (начало уч. года): <span id="openingVal">{{ "%.2f"|format(opening_balance) }} ₽</span></li>
+        <li><strong>Баланс на сегодня</strong>: {{ "%.2f"|format(balance_today) }} ₽</li>
+        <li><strong>Прогноз поступлений до конца месяца</strong> (ожидаемые, по неподтверждённым платежам): {{ "%.2f"|format(forecast_end_of_month) }} ₽</li>
+    </ul>
+</section>
+
+<section class="accounting-opening">
+    <h2>Входящее сальдо</h2>
+    <p class="hint">Укажите сальдо на начало учебного года ({{ period_key }}). Один раз в начале года или при первом запуске.</p>
+    <form method="post" action="/accounting/opening-balance" style="display: flex; gap: 0.5rem; align-items: flex-end; flex-wrap: wrap;">
+        <input type="hidden" name="period_key" value="{{ period_key }}">
+        <div class="form-row" style="margin-bottom: 0;">
+            <label for="balance">Сальдо (₽)</label>
+            <input type="text" id="balance" name="balance" value="{{ "%.2f"|format(opening_balance) }}" placeholder="0">
+        </div>
+        <button type="submit" class="btn btn-primary">Сохранить</button>
+    </form>
+</section>
+
+<section class="accounting-income-extra">
+    <h2>Внести дополнительные средства в кассу</h2>
+    <p class="hint">Внесение наличных или безнала в кассу (не от родителей): укажите сумму, дату и комментарий.</p>
+    <form method="post" action="/accounting/income-extra" style="display: grid; grid-template-columns: 1fr 1fr auto; gap: 0.75rem; align-items: end; max-width: 600px;">
+        <div class="form-row" style="margin-bottom: 0;">
+            <label for="income_extra_amount">Сумма (₽)</label>
+            <input type="number" id="income_extra_amount" name="amount" step="0.01" min="0.01" required>
+        </div>
+        <div class="form-row" style="margin-bottom: 0;">
+            <label for="income_extra_date">Дата</label>
+            <input type="date" id="income_extra_date" name="income_date" required>
+        </div>
+        <button type="submit" class="btn btn-primary">Внести</button>
+        <div class="form-row" style="margin-bottom: 0; grid-column: 1 / -1;">
+            <label for="income_extra_comment">Комментарий</label>
+            <input type="text" id="income_extra_comment" name="comment" placeholder="Например: возврат переплаты, прочий доход, внесение в кассу">
+        </div>
+    </form>
+</section>
+
+<section class="accounting-expense">
+    <h2>Внести списание</h2>
+    <form method="post" action="/accounting/expense" style="display: grid; grid-template-columns: 1fr 1fr auto; gap: 0.75rem; align-items: end; max-width: 500px;">
+        <div class="form-row" style="margin-bottom: 0;">
+            <label for="expense_amount">Сумма (₽)</label>
+            <input type="number" id="expense_amount" name="amount" step="0.01" min="0.01" required>
+        </div>
+        <div class="form-row" style="margin-bottom: 0;">
+            <label for="expense_date">Дата</label>
+            <input type="date" id="expense_date" name="expense_date" required>
+        </div>
+        <button type="submit" class="btn btn-secondary">Добавить</button>
+        <div class="form-row" style="margin-bottom: 0; grid-column: 1 / -1;">
+            <label for="expense_reason">Причина списания</label>
+            <input type="text" id="expense_reason" name="reason" required placeholder="Например: комиссия банка, расход">
+        </div>
+    </form>
+</section>
+
+<section class="accounting-filters">
+    <h2>Движения (пополнения и списания)</h2>
+    <form method="get" action="/accounting" id="accountingFilters" style="display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: flex-end; margin-bottom: 1rem;">
+        <div class="form-row" style="margin-bottom: 0;">
+            <label for="date_from">Дата с</label>
+            <input type="date" id="date_from" name="date_from" value="{{ filters.date_from }}">
+        </div>
+        <div class="form-row" style="margin-bottom: 0;">
+            <label for="date_to">Дата по</label>
+            <input type="date" id="date_to" name="date_to" value="{{ filters.date_to }}">
+        </div>
+        <div class="form-row" style="margin-bottom: 0;">
+            <label for="payment_type">Вариант оплаты</label>
+            <select id="payment_type" name="payment_type">
+                <option value="">— Все —</option>
+                <option value="cash" {% if filters.payment_type == 'cash' %}selected{% endif %}>Наличные</option>
+                <option value="cashless" {% if filters.payment_type == 'cashless' %}selected{% endif %}>Безнал</option>
+            </select>
+        </div>
+        <div class="form-row" style="margin-bottom: 0;">
+            <label for="amount_min">Сумма от (₽)</label>
+            <input type="number" id="amount_min" name="amount_min" step="0.01" min="0" placeholder="—" value="{{ filters.amount_min }}">
+        </div>
+        <div class="form-row" style="margin-bottom: 0;">
+            <label for="amount_max">Сумма до (₽)</label>
+            <input type="number" id="amount_max" name="amount_max" step="0.01" min="0" placeholder="—" value="{{ filters.amount_max }}">
+        </div>
+        <button type="submit" class="btn btn-primary">Показать</button>
+    </form>
+</section>
+
+<div class="table-wrap">
+    <table>
+        <thead>
+            <tr>
+                <th>Дата</th>
+                <th>Тип</th>
+                <th>Сумма (₽)</th>
+                <th>Описание</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for m in movements %}
+            <tr>
+                <td>{{ m.date }}</td>
+                <td>{% if m.type == 'income' %}{% if m.is_extra %}Доп. средства в кассу{% else %}Пополнение {% if m.payment_type == 'cashless' %}(безнал){% else %}(нал){% endif %}{% endif %}{% else %}Списание{% endif %}</td>
+                <td>{% if m.type == 'income' %}+ {{ "%.2f"|format(m.amount) }}{% else %}− {{ "%.2f"|format(m.amount) }}{% endif %}</td>
+                <td>{{ m.description }}{% if m.purpose and not m.is_extra %} — {{ purpose_options.get(m.purpose, m.purpose) }}{% endif %}{% if m.bank_commission and m.bank_commission|float > 0 %} (комиссия {{ "%.2f"|format(m.bank_commission) }} ₽){% endif %}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+<p class="hint">Пополнения — подтверждённые платежи от родителей и внесённые дополнительные средства в кассу (с комментарием). Списания вносятся вручную выше.</p>
+
+<script>
+(function() {
+    var d = new Date().toISOString().slice(0, 10);
+    var expenseDate = document.getElementById('expense_date');
+    var incomeExtraDate = document.getElementById('income_extra_date');
+    if (expenseDate) expenseDate.value = d;
+    if (incomeExtraDate) incomeExtraDate.value = d;
+})();
+</script>
+{% endblock %}

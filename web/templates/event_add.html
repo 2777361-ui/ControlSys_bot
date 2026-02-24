@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Добавить мероприятие — Школьная система{% endblock %}
+{% block content %}
+<h1>Добавить мероприятие</h1>
+<form method="post" action="/events/add">
+    <div class="form-row">
+        <label for="name">Название</label>
+        <input type="text" id="name" name="name" required>
+    </div>
+    <div class="form-row">
+        <label for="description">Описание</label>
+        <input type="text" id="description" name="description" placeholder="Необязательно">
+    </div>
+    <div class="form-row">
+        <label for="event_date">Дата</label>
+        <input type="text" id="event_date" name="event_date" placeholder="ГГГГ-ММ-ДД">
+    </div>
+    <div class="form-row">
+        <label for="amount_required">Сумма взноса (₽)</label>
+        <input type="number" id="amount_required" name="amount_required" step="0.01" min="0" placeholder="Необязательно">
+    </div>
+    <button type="submit" class="btn btn-primary">Сохранить</button>
+    <a href="/events" class="btn btn-secondary">Отмена</a>
+</form>
+{% endblock %}

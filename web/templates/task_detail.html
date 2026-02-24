@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}{{ task.title }} — Текущие дела{% endblock %}
+{% block content %}
+<h1>{{ task.title }}</h1>
+<p><a href="/tasks">← К текущим делам</a></p>
+
+<form method="post" action="/tasks/{{ task.id }}" style="margin-bottom: 1.5rem;">
+    <div class="form-row">
+        <label for="title">Название</label>
+        <input type="text" id="title" name="title" value="{{ task.title }}" required>
+    </div>
+    <div class="form-row">
+        <label for="description">Описание</label>
+        <textarea id="description" name="description" rows="4">{{ task.description or '' }}</textarea>
+    </div>
+    <div class="form-row">
+        <label for="contact_info">Контакт для связи</label>
+        <input type="text" id="contact_info" name="contact_info" value="{{ task.contact_info or '' }}" placeholder="Телефон, email, ФИО">
+    </div>
+    <div class="form-row">
+        <label for="status">Статус</label>
+        <select id="status" name="status">
+            <option value="open" {% if task.status == 'open' %}selected{% endif %}>Открыта</option>
+            <option value="in_progress" {% if task.status == 'in_progress' %}selected{% endif %}>В работе</option>
+            <option value="done" {% if task.status == 'done' %}selected{% endif %}>Выполнена</option>
+        </select>
+    </div>
+    <button type="submit" class="btn btn-primary">Сохранить</button>
+</form>
+
+<h2>Комментарии</h2>
+{% if comments %}
+<ul class="task-comments">
+    {% for c in comments %}
+    <li><strong>{{ c.author_name }}</strong> ({{ c.created_at[:16] if c.created_at else '' }}): {{ c.comment_text }}</li>
+    {% endfor %}
+</ul>
+{% else %}
+<p class="hint">Комментариев пока нет.</p>
+{% endif %}
+<form method="post" action="/tasks/{{ task.id }}/comment" style="margin-bottom: 1.5rem;">
+    <div class="form-row">
+        <label for="comment_text">Добавить комментарий</label>
+        <textarea id="comment_text" name="comment_text" rows="2" placeholder="Текст комментария..." required></textarea>
+    </div>
+    <button type="submit" class="btn btn-secondary">Отправить</button>
+</form>
+
+<h2>Назначения (кто может смотреть, кто исполнитель)</h2>
+<ul>
+    {% for a in assignments %}
+    <li>
+        {% if a.group_name %}{{ a.group_name }} (группа){% else %}{{ a.user_name }}{% endif %}
+        — просмотр: {% if a.can_view %}да{% else %}нет{% endif %}, исполнитель: {% if a.is_executor %}да{% else %}нет{% endif %}
+        <form method="post" action="/tasks/assignments/{{ a.id }}/remove" style="display: inline;">
+            <button type="submit" class="btn btn-secondary">Снять</button>
+        </form>
+    </li>
+    {% endfor %}
+</ul>
+{% if not assignments %}<p class="hint">Назначений нет.</p>{% endif %}
+
+<form method="post" action="/tasks/{{ task.id }}/assign" style="margin-top: 1rem; padding: 1rem; border: 1px solid var(--border); border-radius: 8px;">
+    <h3>Добавить назначение</h3>
+    <div class="form-row">
+        <label>Тип</label>
+        <select name="assign_type" id="assign_type">
+            <option value="group">Группа</option>
+            <option value="user">Пользователь</option>
+        </select>
+    </div>
+    <div class="form-row" id="row-group">
+        <label>Группа</label>
+        <select name="group_id">
+            <option value="">— Выберите —</option>
+            {% for g in groups %}
+            <option value="{{ g.id }}">{{ g.name }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="form-row" id="row-user" style="display: none;">
+        <label>Пользователь</label>
+        <select name="assign_user_id">
+            <option value="">— Выберите —</option>
+            {% for u in users %}
+            <option value="{{ u.id }}">{{ u.full_name }} ({{ u.role }})</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="form-row">
+        <label><input type="checkbox" name="can_view" value="on" checked> Может просматривать</label>
+    </div>
+    <div class="form-row">
+        <label><input type="checkbox" name="is_executor" value="on"> Исполнитель</label>
+    </div>
+    <button type="submit" class="btn btn-primary">Добавить</button>
+</form>
+
+<form method="post" action="/tasks/{{ task.id }}/delete" style="margin-top: 1.5rem;" onsubmit="return confirm('Удалить задачу?');">
+    <button type="submit" class="btn btn-secondary">Удалить задачу</button>
+</form>
+
+<script>
+(function() {
+    var t = document.getElementById('assign_type');
+    var rowGroup = document.getElementById('row-group');
+    var rowUser = document.getElementById('row-user');
+    function toggle() {
+        var v = t.value;
+        rowGroup.style.display = v === 'group' ? '' : 'none';
+        rowUser.style.display = v === 'user' ? '' : 'none';
+    }
+    t.addEventListener('change', toggle);
+    toggle();
+})();
+</script>
+{% endblock %}

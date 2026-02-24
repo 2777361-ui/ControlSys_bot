@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block title %}Мой класс — Школьная система{% endblock %}
+{% block content %}
+<h1>Мой класс</h1>
+{% if request.query_params.get("substitute") == "1" %}<p class="success">Замещение назначено.</p>{% endif %}
+{% if request.query_params.get("removed") == "1" %}<p class="success">Замещение снято.</p>{% endif %}
+{% if request.query_params.get("charged") == "1" %}<p class="success">Списание внесено.</p>{% endif %}
+
+{% if data.my_class_grade is none %}
+<p>Вам пока не назначен класс. Обратитесь к администрации: в разделе <strong>Классные руководители</strong> директор или бухгалтер привязывает учителя к классу.</p>
+<p><a href="/nutrition">Перейти к питанию</a></p>
+{% else %}
+<p><strong>Вы — классный руководитель {{ data.my_class_grade|class_grade_display }}.</strong></p>
+
+<h2>Ученики моего класса и задолженности</h2>
+{% if students_with_balance %}
+<div class="table-wrap">
+    <table>
+        <thead>
+            <tr><th>ФИО</th><th>Родитель</th><th>Баланс (₽)</th><th>Задолженность (₽)</th><th>Действия</th></tr>
+        </thead>
+        <tbody>
+            {% for s in students_with_balance %}
+            <tr>
+                <td>{{ s.full_name }}</td>
+                <td>{{ s.parent_name or "—" }}</td>
+                <td>{{ "%.2f"|format(s.balance) }}</td>
+                <td>{% if s.debt and s.debt > 0 %}{{ "%.2f"|format(s.debt) }}{% else %}—{% endif %}</td>
+                <td><a href="/student-charge/add?student_id={{ s.id }}" class="btn btn-secondary">Внести списание</a></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+<p class="hint">Списание (продленка, расходники и т.д.) вносится с баланса ученика. Учитель может добавить списание для учеников своего класса.</p>
+{% elif data.my_class_students %}
+<div class="table-wrap">
+    <table>
+        <thead>
+            <tr><th>ФИО</th><th>Родитель</th></tr>
+        </thead>
+        <tbody>
+            {% for s in data.my_class_students %}
+            <tr>
+                <td>{{ s.full_name }}</td>
+                <td>{{ s.parent_name or "—" }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<p class="hint">В классе пока нет учеников.</p>
+{% endif %}
+
+<h2>Замещение педагога на время</h2>
+<p class="hint">Если вы временно не ведёте класс, назначьте другого учителя — он увидит учеников вашего класса в разделе «Питание» и «Рассылки» отдельно.</p>
+{% if substitute_info %}
+<p><strong>Сейчас замещает:</strong> {{ substitute_info.substitute_teacher_name }}{% if substitute_info.valid_until %} (до {{ substitute_info.valid_until }}){% endif %}.</p>
+<form method="post" action="/my-class/substitute/remove" style="display: inline;">
+    <button type="submit" class="btn btn-secondary">Снять замещение</button>
+</form>
+{% else %}
+<form method="post" action="/my-class/substitute" style="max-width: 400px;">
+    <div class="form-row">
+        <label for="substitute_teacher_id">Учитель-заместитель</label>
+        <select id="substitute_teacher_id" name="substitute_teacher_id" required>
+            <option value="">— Выберите —</option>
+            {% for t in other_teachers %}
+            <option value="{{ t.id }}">{{ t.full_name }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="form-row">
+        <label for="valid_until">До даты (необязательно)</label>
+        <input type="date" id="valid_until" name="valid_until" placeholder="ГГГГ-ММ-ДД">
+        <p class="hint">Оставьте пустым — замещение без срока.</p>
+    </div>
+    <button type="submit" class="btn btn-primary">Назначить замещение</button>
+</form>
+{% endif %}
+
+{% if data.substitute_classes %}
+<h2>Классы, которые я веду по замещению</h2>
+{% for group in data.substitute_classes %}
+<h3>{{ group.label }}{% if group.teacher_name %} (классный руководитель: {{ group.teacher_name }}){% endif %}</h3>
+{% if group.students_with_balance %}
+<div class="table-wrap">
+    <table>
+        <thead>
+            <tr><th>ФИО</th><th>Родитель</th><th>Баланс (₽)</th><th>Задолженность (₽)</th><th>Действия</th></tr>
+        </thead>
+        <tbody>
+            {% for s in group.students_with_balance %}
+            <tr>
+                <td>{{ s.full_name }}</td>
+                <td>{{ s.parent_name or "—" }}</td>
+                <td>{{ "%.2f"|format(s.balance) }}</td>
+                <td>{% if s.debt and s.debt > 0 %}{{ "%.2f"|format(s.debt) }}{% else %}—{% endif %}</td>
+                <td><a href="/student-charge/add?student_id={{ s.id }}" class="btn btn-secondary">Внести списание</a></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% elif group.students %}
+<div class="table-wrap">
+    <table>
+        <thead>
+            <tr><th>ФИО</th><th>Родитель</th></tr>
+        </thead>
+        <tbody>
+            {% for s in group.students %}
+            <tr>
+                <td>{{ s.full_name }}</td>
+                <td>{{ s.parent_name or "—" }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<p class="hint">Нет учеников.</p>
+{% endif %}
+{% endfor %}
+{% endif %}
+
+<p style="margin-top: 1.5rem;"><a href="/nutrition">Питание</a> | <a href="/broadcast">Рассылки</a></p>
+{% endif %}
+{% endblock %}

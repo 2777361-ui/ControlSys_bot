@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Цены на питание — Школьная система{% endblock %}
+{% block content %}
+<h1>Цены на питание</h1>
+<p class="hint">Задаёт бухгалтер или директор. По этим ценам считаются списания с баланса столовой за каждого ученика и родителя на питании.</p>
+{% if request.query_params.get("ok") %}<p class="success">Цены сохранены.</p>{% endif %}
+<form method="post" action="/nutrition/prices">
+    <div class="form-row">
+        <label for="breakfast">Завтрак (₽)</label>
+        <input type="number" id="breakfast" name="breakfast" step="0.01" min="0" value="{{ "%.2f"|format(prices.get('breakfast', 0)) }}">
+    </div>
+    <div class="form-row">
+        <label for="lunch">Обед (₽)</label>
+        <input type="number" id="lunch" name="lunch" step="0.01" min="0" value="{{ "%.2f"|format(prices.get('lunch', 0)) }}">
+    </div>
+    <div class="form-row">
+        <label for="dinner">Ужин (₽)</label>
+        <input type="number" id="dinner" name="dinner" step="0.01" min="0" value="{{ "%.2f"|format(prices.get('dinner', 0)) }}">
+    </div>
+    <button type="submit" class="btn btn-primary">Сохранить</button>
+</form>
+<p><a href="/nutrition">← К разделу питания</a></p>
+{% endblock %}

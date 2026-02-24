@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Входящие обращения — Школьная система{% endblock %}
+{% block content %}
+<h1>Входящая обратная связь</h1>
+<p class="hint">Сообщения от родителей, учителей, столовой, бухгалтерии. Можно ответить, пометить прочитанным, удалить или перенести в <a href="/tasks">Текущие дела</a>.</p>
+
+<p>
+    <a href="/feedback/inbox" class="btn btn-secondary">Все</a>
+    <a href="/feedback/inbox?status=new" class="btn btn-secondary">Новые</a>
+    <a href="/feedback/inbox?status=read" class="btn btn-secondary">Прочитанные</a>
+    <a href="/feedback/inbox?status=replied" class="btn btn-secondary">С ответом</a>
+    <a href="/feedback/inbox?status=moved" class="btn btn-secondary">В делах</a>
+</p>
+
+{% for f in items %}
+<article class="message-card" style="margin-bottom: 1rem;">
+    <header class="message-card-header">
+        <span>{{ f.from_name or "—" }}{% if f.from_email %} ({{ f.from_email }}){% endif %}</span>
+        <time>{{ (f.created_at or "")[:16] }}</time>
+        <span class="badge badge-{{ f.status }}">{{ f.status }}</span>
+    </header>
+    <div class="message-body">{{ f.message_text | e }}</div>
+    {% if f.admin_reply %}
+    <div style="margin-top: 0.75rem; padding: 0.5rem; background: var(--bg-secondary); border-radius: 8px;">
+        <strong>Ответ:</strong> {{ f.admin_reply | e }}
+    </div>
+    {% endif %}
+    <div style="margin-top: 0.5rem;">
+        {% if f.status == 'new' %}
+        <form method="post" action="/feedback/{{ f.id }}/read" style="display: inline;">
+            <button type="submit" class="btn btn-secondary">Прочитано</button>
+        </form>
+        {% endif %}
+        {% if f.status != 'replied' and f.status != 'moved' %}
+        <form method="post" action="/feedback/{{ f.id }}/reply" style="display: inline; margin-top: 0.5rem;" id="reply-form-{{ f.id }}">
+            <textarea name="admin_reply" placeholder="Ответ пользователю" rows="2" style="min-width: 250px; display: block; margin-bottom: 0.35rem;"></textarea>
+            <button type="submit" class="btn btn-primary">Ответить</button>
+        </form>
+        {% endif %}
+        {% if f.status != 'moved' %}
+        <form method="post" action="/feedback/{{ f.id }}/move-to-task" style="display: inline; margin-top: 0.5rem;" id="move-form-{{ f.id }}">
+            <input type="text" name="title" placeholder="Название задачи" value="Обратная связь #{{ f.id }}" style="min-width: 180px;">
+            <input type="text" name="contact_info" placeholder="Контакт для связи" value="{{ f.from_name or '' }}{% if f.from_email %} ({{ f.from_email }}){% endif %}" style="min-width: 200px;">
+            <button type="submit" class="btn btn-secondary">В текущие дела</button>
+        </form>
+        {% endif %}
+        {% if f.status != 'deleted' %}
+        <form method="post" action="/feedback/{{ f.id }}/delete" style="display: inline;" onsubmit="return confirm('Удалить обращение?');">
+            <button type="submit" class="btn btn-secondary">Удалить</button>
+        </form>
+        {% endif %}
+    </div>
+</article>
+{% endfor %}
+
+{% if not items %}
+<p class="hint">Обращений нет.</p>
+{% endif %}
+<p style="margin-top: 1rem;"><a href="/dashboard">← Дашборд</a></p>
+{% endblock %}

@@ -66,3 +66,53 @@ def setup_logging(level: int = logging.DEBUG) -> None:
     logging.getLogger("aiogram.event").setLevel(logging.WARNING)
 
     root_logger.info("Логирование настроено: терминал=INFO, файл=%s=DEBUG", _LOG_FILE)
+
+
+# --- Супер-логирование: кто что нажал / что сделал (аудит и отладка) ---
+
+def audit_log(
+    logger: logging.Logger,
+    action: str,
+    *,
+    user_id: int | None = None,
+    role: str | None = None,
+    extra: dict | None = None,
+    message: str = "",
+) -> None:
+    """
+    Записать действие в лог в едином формате: кто (user_id, role), что сделал (action), доп. данные (extra).
+    Так в логах видно, кто что нажимал и где что сломалось.
+    """
+    parts = [f"action={action}"]
+    if user_id is not None:
+        parts.append(f"user_id={user_id}")
+    if role:
+        parts.append(f"role={role}")
+    if extra:
+        for k, v in extra.items():
+            if k in ("password", "password_hash", "token"):
+                parts.append(f"{k}=***")
+            else:
+                parts.append(f"{k}={v}")
+    line = " | ".join(parts)
+    if message:
+        line = f"{line} | {message}"
+    logger.info("AUDIT | %s", line)
+
+
+def log_exception(
+    logger: logging.Logger,
+    message: str,
+    *,
+    user_id: int | None = None,
+    path: str | None = None,
+    exc: BaseException | None = None,
+) -> None:
+    """Записать ошибку с контекстом (кто, какой путь), чтобы понять, где сломалось."""
+    ctx = []
+    if user_id is not None:
+        ctx.append(f"user_id={user_id}")
+    if path:
+        ctx.append(f"path={path}")
+    prefix = " | ".join(ctx) + " | " if ctx else ""
+    logger.exception("%s%s", prefix, message, exc_info=exc is not None)

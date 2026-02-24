@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Внести платёж — Школьная система{% endblock %}
+{% block content %}
+<h1>Внести платёж</h1>
+<p>Платёж будет в статусе «Ожидает подтверждения». Подтвердить его можно на <a href="/dashboard">дашборде</a>. В <a href="/accounting">бухгалтерии</a> учитываются тип оплаты и комиссия.</p>
+<form method="post" action="/payments/add">
+    <div class="form-row">
+        <label for="student_id">Ученик</label>
+        <select id="student_id" name="student_id" required>
+            <option value="">— Выберите ученика —</option>
+            {% for s in students %}
+            <option value="{{ s.id }}" {% if selected_student_id and s.id == selected_student_id %}selected{% endif %}>{{ s.full_name }} ({{ s.class_grade|class_grade_display }}) — {{ s.parent_name }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="form-row">
+        <label for="amount">Сумма (₽) — сколько оплатил родитель</label>
+        <input type="number" id="amount" name="amount" step="0.01" min="0.01" required>
+    </div>
+    <div class="form-row">
+        <label for="payment_type">Вариант оплаты</label>
+        <select id="payment_type" name="payment_type">
+            <option value="cash">Наличные</option>
+            <option value="cashless">Безнал</option>
+        </select>
+    </div>
+    <div class="form-row" id="row_commission" style="display: none;">
+        <label for="bank_commission">Банковская комиссия (₽)</label>
+        <input type="number" id="bank_commission" name="bank_commission" step="0.01" min="0" value="0">
+    </div>
+    <div class="form-row" id="row_received" style="display: none;">
+        <label for="amount_received">Сумма, поступившая на счёт (₽)</label>
+        <input type="number" id="amount_received" name="amount_received" step="0.01" min="0" placeholder="Сумма минус комиссия">
+        <p class="hint">Реальная сумма, зачисленная на счёт (после вычета комиссии).</p>
+    </div>
+    <div class="form-row">
+        <label for="purpose">Назначение</label>
+        <select id="purpose" name="purpose" required>
+            {% for pp in purposes %}
+            <option value="{{ pp.code }}" {% if pp.code == 'food' %}selected{% endif %}>{{ pp.name }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="form-row">
+        <label for="description">Комментарий</label>
+        <input type="text" id="description" name="description" placeholder="Необязательно">
+    </div>
+    <button type="submit" class="btn btn-primary">Сохранить</button>
+    <a href="/dashboard" class="btn btn-secondary">Отмена</a>
+</form>
+<script>
+(function() {
+    var pt = document.getElementById('payment_type');
+    var rowCommission = document.getElementById('row_commission');
+    var rowReceived = document.getElementById('row_received');
+    var amountEl = document.getElementById('amount');
+    var commissionEl = document.getElementById('bank_commission');
+    var receivedEl = document.getElementById('amount_received');
+    function toggle() {
+        var isCashless = pt.value === 'cashless';
+        rowCommission.style.display = isCashless ? 'block' : 'none';
+        rowReceived.style.display = isCashless ? 'block' : 'none';
+        if (!isCashless) { commissionEl.value = '0'; receivedEl.value = ''; }
+    }
+    function calcReceived() {
+        if (pt.value !== 'cashless') return;
+        var a = parseFloat(amountEl.value) || 0;
+        var c = parseFloat(commissionEl.value) || 0;
+        receivedEl.value = (a - c).toFixed(2);
+    }
+    pt.addEventListener('change', toggle);
+    amountEl.addEventListener('input', calcReceived);
+    commissionEl.addEventListener('input', calcReceived);
+    toggle();
+})();
+</script>
+{% endblock %}

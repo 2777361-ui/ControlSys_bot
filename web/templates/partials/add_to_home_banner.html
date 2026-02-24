@@ -1,0 +1,49 @@
+{# Баннер только для мобильных: предложение добавить приложение на главный экран #}
+<div id="addToHomeBanner" class="add-to-home-banner" role="region" aria-label="Добавить на главный экран">
+    <span class="add-to-home-icon" aria-hidden="true">📲</span>
+    <div class="add-to-home-text">
+        <strong>Используете с телефона?</strong> Добавьте приложение на главный экран для быстрого доступа.
+    </div>
+    <div class="add-to-home-actions">
+        <button type="button" class="add-to-home-btn" id="addToHomeHowBtn" aria-expanded="false">Как добавить</button>
+        <button type="button" class="add-to-home-close" id="addToHomeCloseBtn" aria-label="Закрыть">×</button>
+    </div>
+    <div id="addToHomeInstructions" class="add-to-home-instructions" hidden>
+        <p><strong>iPhone (Safari):</strong> нажмите кнопку «Поделиться» внизу экрана → «На экран „Домой“».</p>
+        <p><strong>Android (Chrome):</strong> меню (три точки) → «Добавить на главный экран» или «Установить приложение».</p>
+    </div>
+</div>
+<script>
+(function() {
+    var STORAGE_KEY = 'addToHomeBannerDismissed';
+    var DISMISS_DAYS = 7;
+    function isDismissed() {
+        try {
+            var raw = localStorage.getItem(STORAGE_KEY);
+            if (!raw) return false;
+            var t = parseInt(raw, 10);
+            return (Date.now() - t) < DISMISS_DAYS * 24 * 60 * 60 * 1000;
+        } catch (e) { return false; }
+    }
+    function dismiss() {
+        try { localStorage.setItem(STORAGE_KEY, String(Date.now())); } catch (e) {}
+        var b = document.getElementById('addToHomeBanner');
+        if (b) b.classList.add('add-to-home-banner--dismissed');
+    }
+    document.addEventListener('DOMContentLoaded', function() {
+        var banner = document.getElementById('addToHomeBanner');
+        if (!banner) return;
+        if (isDismissed()) { banner.classList.add('add-to-home-banner--dismissed'); return; }
+        var closeBtn = document.getElementById('addToHomeCloseBtn');
+        var howBtn = document.getElementById('addToHomeHowBtn');
+        var instructions = document.getElementById('addToHomeInstructions');
+        if (closeBtn) closeBtn.addEventListener('click', dismiss);
+        if (howBtn && instructions) {
+            howBtn.addEventListener('click', function() {
+                instructions.hidden = !instructions.hidden;
+                howBtn.setAttribute('aria-expanded', instructions.hidden ? 'false' : 'true');
+            });
+        }
+    });
+})();
+</script>

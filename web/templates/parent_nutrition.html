@@ -1,0 +1,37 @@
+{% extends "parent_base.html" %}
+{% block title %}План питания — Школьная система{% endblock %}
+{% block content %}
+<h1>План питания</h1>
+<p class="hint">Настройте по умолчанию, на каких приёмах пищи стоит каждый ребёнок (завтрак, обед, ужин). Так вы не забываете снимать ребёнка, если он не ходит на ужин. Эти данные идут в столовую. Можно также встать на питание самому.</p>
+{% if request.query_params.get("ok") %}<p class="success">План сохранён.</p>{% endif %}
+
+<form method="post" action="/parent/nutrition">
+    {% for s in students %}
+    <section class="student-block">
+        <h2>{{ s.full_name }} — {{ s.class_grade|class_grade_display }}</h2>
+        {% set plan = plans.get(s.id) %}
+        <p>
+            <label><input type="checkbox" name="child_{{ s.id }}_breakfast" {% if not plan or plan.has_breakfast %}checked{% endif %}> Завтрак</label>
+            <label><input type="checkbox" name="child_{{ s.id }}_lunch" {% if not plan or plan.has_lunch %}checked{% endif %}> Обед</label>
+            <label><input type="checkbox" name="child_{{ s.id }}_dinner" {% if plan and plan.has_dinner %}checked{% endif %}> Ужин</label>
+        </p>
+    </section>
+    {% endfor %}
+
+    <section class="student-block">
+        <h2>Я на питании</h2>
+        <p class="hint">Отметьте, если вы сами питаетесь в столовой (завтрак/обед/ужин).</p>
+        <p>
+            <label><input type="checkbox" name="parent_on_nutrition" {% if parent_plan %}checked{% endif %}> Я стою на питании</label>
+        </p>
+        <p id="parentMeals">
+            <label><input type="checkbox" name="parent_breakfast" {% if parent_plan and parent_plan.has_breakfast %}checked{% endif %}> Завтрак</label>
+            <label><input type="checkbox" name="parent_lunch" {% if parent_plan and parent_plan.has_lunch %}checked{% endif %}> Обед</label>
+            <label><input type="checkbox" name="parent_dinner" {% if parent_plan and parent_plan.has_dinner %}checked{% endif %}> Ужин</label>
+        </p>
+    </section>
+
+    <button type="submit" class="btn btn-primary">Сохранить план</button>
+</form>
+<p><a href="/parent">← Мои дети</a> | <a href="/parent/nutrition-report">Отчёт по питанию за месяц</a></p>
+{% endblock %}

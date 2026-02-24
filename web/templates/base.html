@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#1565c0">
+    <title>{% block title %}Школьная система{% endblock %}</title>
+    <link rel="icon" type="image/png" href="/static/favicon.png">
+    <link rel="apple-touch-icon" href="/static/favicon.png">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    {% include "partials/add_to_home_banner.html" %}
+    {% if request.cookies.get("session") %}
+    <nav class="nav-wrap">
+        <div class="nav-inner">
+            <a href="/" class="nav-brand">
+                <img src="/static/img/logo-dark.png" alt="" class="nav-logo nav-logo-light">
+                <img src="/static/img/logo-white.png" alt="" class="nav-logo nav-logo-dark">
+                <span>Школьная система</span>
+            </a>
+            <button type="button" class="nav-menu-btn" id="nav-menu-btn" aria-label="Открыть меню" aria-expanded="false" aria-controls="nav-drawer">
+                <span></span><span></span><span></span>
+            </button>
+        </div>
+    </nav>
+    <div class="nav-overlay" id="nav-overlay" aria-hidden="true"></div>
+    <aside class="nav-drawer" id="nav-drawer" role="dialog" aria-label="Главное меню" aria-modal="true">
+        <div class="nav-drawer-header">
+            <a href="/" class="nav-brand">
+                <img src="/static/img/logo-dark.png" alt="" class="nav-logo nav-logo-light">
+                <img src="/static/img/logo-white.png" alt="" class="nav-logo nav-logo-dark">
+                <span>Меню</span>
+            </a>
+        </div>
+        <div class="nav-drawer-body">
+            <div class="nav-drawer-section">
+                <p class="nav-drawer-section-title">Общее</p>
+                <a href="/profile">Профиль</a>
+                <a href="/messages">Сообщения</a>
+                <a href="/feedback">Обратная связь</a>
+                <a href="/my-tasks">Мои задачи</a>
+            </div>
+            {% if current_user and (current_user.role in ('administrator', 'director', 'accountant') or (current_user.role == 'deputy_director' and deputy_allowed)) %}
+            <div class="nav-drawer-section">
+                <p class="nav-drawer-section-title">Управление</p>
+                {% if not deputy_allowed or 'dashboard' in deputy_allowed %}<a href="/dashboard">Дашборд</a>{% endif %}
+                {% if not deputy_allowed or 'accounting' in deputy_allowed %}<a href="/accounting">Бухгалтерия</a>{% endif %}
+                {% if not deputy_allowed or 'payments' in deputy_allowed %}
+                <a href="/payments">Платежи</a>
+                <a href="/payments/add">Внести платёж</a>
+                {% endif %}
+                {% if not deputy_allowed or 'payment_purposes' in deputy_allowed %}<a href="/payment-purposes">Назначения платежей</a>{% endif %}
+                {% if not deputy_allowed or 'students' in deputy_allowed %}<a href="/students">Ученики</a>{% endif %}
+                {% if not deputy_allowed or 'users' in deputy_allowed %}<a href="/users">Пользователи</a>{% endif %}
+                {% if not deputy_allowed or 'events' in deputy_allowed %}<a href="/events">Мероприятия</a>{% endif %}
+                {% if not deputy_allowed %}<a href="/nutrition">Питание</a>{% endif %}
+                {% if not deputy_allowed or 'report' in deputy_allowed %}<a href="/report">Отчёт</a>{% endif %}
+                {% if not deputy_allowed or 'departments' in deputy_allowed %}<a href="/departments">Отделы</a>{% endif %}
+                {% if not deputy_allowed or 'teacher_classes' in deputy_allowed %}<a href="/teacher-classes">Классные руководители</a>{% endif %}
+                {% if not deputy_allowed or 'broadcast' in deputy_allowed %}
+                <a href="/broadcast">Рассылки</a>
+                <a href="/broadcast/channels">Каналы рассылки</a>
+                {% endif %}
+                {% if not deputy_allowed or 'feedback_inbox' in deputy_allowed %}<a href="/feedback/inbox">Входящие обращения</a>{% endif %}
+                {% if not deputy_allowed or 'tasks' in deputy_allowed %}<a href="/tasks">Текущие дела</a>{% endif %}
+            </div>
+            {% endif %}
+            {% if current_user and current_user.role == 'teacher' %}
+            <div class="nav-drawer-section">
+                <p class="nav-drawer-section-title">Учитель</p>
+                <a href="/my-class">Мой класс</a>
+                <a href="/nutrition">Питание</a>
+                <a href="/broadcast">Рассылки</a>
+            </div>
+            {% elif current_user and current_user.role == 'canteen' %}
+            <div class="nav-drawer-section">
+                <p class="nav-drawer-section-title">Столовая</p>
+                <a href="/nutrition">Питание</a>
+            </div>
+            {% endif %}
+        </div>
+        <div class="nav-drawer-footer">
+            <div class="nav-drawer-section">
+                <a href="/logout" class="nav-drawer-logout-link">Выход</a>
+            </div>
+        </div>
+    </aside>
+    {% endif %}
+    <main class="page-wrap">
+        <div class="card">
+            {% block content %}{% endblock %}
+        </div>
+    </main>
+    <script>
+    (function() {
+        var theme = document.cookie.replace(/(?:(?:^|.*;\s*)theme\s*=\s*([^;]*).*$)|^.*$/, '$1') || 'system';
+        document.documentElement.dataset.theme = theme;
+    })();
+    </script>
+    {% if request.cookies.get("session") %}{% include "partials/nav_drawer_script.html" %}{% endif %}
+</body>
+</html>

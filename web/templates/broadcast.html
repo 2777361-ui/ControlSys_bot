@@ -1,0 +1,339 @@
+{% extends "base.html" %}
+{% block title %}Рассылки — Школьная система{% endblock %}
+{% block content %}
+<h1>Рассылки</h1>
+<p class="hint">К сообщению автоматически добавится подпись отправителя. Отправка фиксируется по каждому получателю и в каждый канал.</p>
+
+{% if request.query_params.get("sent") == "1" %}
+<p class="success">Рассылка создана и будет отправлена в ближайшее время.</p>
+{% endif %}
+
+<form method="post" action="/broadcast" id="broadcastForm">
+    <div class="form-row">
+        <label for="message_text">Текст сообщения</label>
+        <textarea id="message_text" name="message_text" rows="5" required placeholder="Введите текст рассылки..."></textarea>
+    </div>
+
+    {% if role in ("administrator", "director", "accountant") %}
+    <h2>Куда отправить</h2>
+    <p class="hint">
+        <a href="/broadcast/channels">Каналы</a> (общий чат ТГ, WhatsApp, МАХ) настраиваются отдельно.
+    </p>
+    <fieldset style="margin-bottom: 1rem;">
+        <legend>Выберите вариант</legend>
+        <label style="display: block; margin: 0.5rem 0;">
+            <input type="radio" name="recipient_type" value="general_chat"> В общий чат школы (каналы: Telegram / WhatsApp / МАХ)
+        </label>
+        <label style="display: block; margin: 0.5rem 0;">
+            <input type="radio" name="recipient_type" value="class"> Всем родителям класса
+        </label>
+        <label style="display: block; margin: 0.5rem 0;">
+            <input type="radio" name="recipient_type" value="parents_of_class"> Конкретным родителям учеников класса
+        </label>
+        <label style="display: block; margin: 0.5rem 0;">
+            <input type="radio" name="recipient_type" value="teachers_departments" checked> По учителям и/или отделам
+        </label>
+    </fieldset>
+
+    <div id="blockGeneralChat" class="broadcast-block" style="display: none;">
+        <legend>Общий чат школы</legend>
+        <p class="hint">Выберите каналы, в которые отправить сообщение.</p>
+        {% for ch in channels %}
+        <label style="display: block; margin: 0.35rem 0;">
+            <input type="checkbox" name="channel_ids" value="{{ ch.id }}">
+            {{ ch.name }} ({% if ch.channel_type == 'telegram' %}Telegram{% elif ch.channel_type == 'whatsapp' %}WhatsApp{% else %}МАХ{% endif %})
+        </label>
+        {% endfor %}
+        {% if not channels %}
+        <p class="hint">Нет каналов. <a href="/broadcast/channels">Добавьте канал</a> (общий чат ТГ, WhatsApp или группу МАХ).</p>
+        {% endif %}
+    </div>
+
+    <div id="blockClass" class="broadcast-block" style="display: none;">
+        <legend>Класс</legend>
+        <label for="class_grade_one">Класс</label>
+        <select id="class_grade_one" name="class_grade">
+            <option value="">— Выберите —</option>
+            <option value="0">Детский сад</option>
+            {% for g in range(1, 12) %}
+            <option value="{{ g }}">{{ g }} класс</option>
+            {% endfor %}
+        </select>
+        <p class="hint">Сообщение получат все родители учеников этого класса (у кого есть Telegram).</p>
+    </div>
+
+    <div id="blockParentsOfClass" class="broadcast-block" style="display: none;">
+        <legend>Конкретным родителям класса</legend>
+        <label>Класс</label>
+        <select id="class_grade_parents" name="class_grade_parents">
+            <option value="0">Детский сад</option>
+            {% for g in range(1, 12) %}
+            <option value="{{ g }}">{{ g }} класс</option>
+            {% endfor %}
+        </select>
+        <p class="hint">Отметьте родителей — сообщение получит только выбранные.</p>
+        <div style="max-height: 250px; overflow-y: auto; border: 1px solid var(--border); padding: 0.5rem; border-radius: 8px; margin-top: 0.5rem;">
+            {% for g in range(0, 12) %}
+            <div id="parentsClass{{ g }}" class="parents-class-block" style="display: none;">
+                {% for p in parents_by_class.get(g, []) %}
+                <label style="display: block; margin: 0.35rem 0;">
+                    <input type="checkbox" name="parent_ids" value="{{ p.id }}" data-class="{{ g }}">
+                    {{ p.full_name }}{% if p.telegram_id %} ✅{% else %} (нет Telegram){% endif %}
+                </label>
+                {% endfor %}
+                {% if not parents_by_class.get(g) %}
+                <p class="hint">В этом классе нет родителей с Telegram.</p>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div id="blockTeachersDepartments" class="broadcast-block">
+        <legend>По учителям и отделам</legend>
+        <fieldset style="margin-bottom: 0.5rem;">
+            <legend>Учителя</legend>
+            {% for t in teachers %}
+            <label style="display: block; margin: 0.35rem 0;">
+                <input type="checkbox" name="teacher_ids" value="{{ t.id }}">
+                {{ t.full_name }}{% if t.telegram_id %} ✅{% else %} (нет Telegram){% endif %}
+            </label>
+            {% endfor %}
+        </fieldset>
+        <fieldset>
+            <legend>Отделы</legend>
+            {% for d in departments %}
+            <label style="display: block; margin: 0.35rem 0;">
+                <input type="checkbox" name="department_ids" value="{{ d.id }}">
+                {{ d.name }}
+            </label>
+            {% endfor %}
+        </fieldset>
+    </div>
+    {% endif %}
+
+    {% if role == "teacher" %}
+    <h2>Кому отправить</h2>
+    <fieldset style="margin-bottom: 1rem;">
+        <legend>Выберите вариант</legend>
+        <label style="display: block; margin: 0.5rem 0;">
+            <input type="radio" name="recipient_type_teacher" value="students" checked> Родителям выбранных учеников
+        </label>
+        <label style="display: block; margin: 0.5rem 0;">
+            <input type="radio" name="recipient_type_teacher" value="class"> Всем родителям класса
+        </label>
+        <label style="display: block; margin: 0.5rem 0;">
+            <input type="radio" name="recipient_type_teacher" value="teachers"> Учителям
+        </label>
+        <label style="display: block; margin: 0.5rem 0;">
+            <input type="radio" name="recipient_type_teacher" value="administration"> Администрации (директор, бухгалтер)
+        </label>
+    </fieldset>
+
+    <div id="blockTeacherStudents" class="broadcast-block-teacher">
+        <legend>Родители учеников</legend>
+        <p class="hint">Выберите учеников — сообщение получат их родители в Telegram.</p>
+        <div style="max-height: 300px; overflow-y: auto; border: 1px solid var(--border); padding: 0.5rem; border-radius: 8px;">
+            {% if teacher_students_data and (teacher_students_data.my_class_students or teacher_students_data.substitute_classes) %}
+            {% if teacher_students_data.my_class_students %}
+            <p class="hint" style="margin-bottom: 0.35rem;"><strong>Мой класс ({{ teacher_students_data.my_class_grade|class_grade_display }})</strong></p>
+            {% for s in teacher_students_data.my_class_students %}
+            <label style="display: block; margin: 0.35rem 0;">
+                <input type="checkbox" name="student_ids" value="{{ s.id }}">
+                {{ s.full_name }}
+            </label>
+            {% endfor %}
+            {% endif %}
+            {% for group in teacher_students_data.substitute_classes %}
+            <p class="hint" style="margin: 0.75rem 0 0.35rem;"><strong>{{ group.label }}</strong></p>
+            {% for s in group.students %}
+            <label style="display: block; margin: 0.35rem 0;">
+                <input type="checkbox" name="student_ids" value="{{ s.id }}">
+                {{ s.full_name }}
+            </label>
+            {% endfor %}
+            {% endfor %}
+            {% else %}
+            {% for s in students %}
+            <label style="display: block; margin: 0.35rem 0;">
+                <input type="checkbox" name="student_ids" value="{{ s.id }}">
+                {{ s.full_name }} — {{ s.class_grade|class_grade_display }}
+            </label>
+            {% endfor %}
+            {% endif %}
+        </div>
+        {% if not students %}
+        <p class="hint">Нет учеников в системе.</p>
+        {% endif %}
+    </div>
+
+    <div id="blockTeacherClass" class="broadcast-block-teacher" style="display: none;">
+        <legend>Родители класса</legend>
+        <label for="class_grade_teacher">Класс</label>
+        <select id="class_grade_teacher" name="class_grade_teacher">
+            <option value="">— Выберите —</option>
+            <option value="0">Детский сад</option>
+            {% for g in range(1, 12) %}
+            <option value="{{ g }}">{{ g }} класс</option>
+            {% endfor %}
+        </select>
+        <p class="hint">Сообщение получат все родители учеников этого класса (у кого есть Telegram).</p>
+    </div>
+
+    <div id="blockTeacherTeachers" class="broadcast-block-teacher" style="display: none;">
+        <legend>Учителя</legend>
+        <p class="hint">Выберите учителей — им придёт сообщение в бот и в веб.</p>
+        <div style="max-height: 250px; overflow-y: auto; border: 1px solid var(--border); padding: 0.5rem; border-radius: 8px;">
+            {% for t in teachers %}
+            <label style="display: block; margin: 0.35rem 0;">
+                <input type="checkbox" name="teacher_ids_teacher" value="{{ t.id }}">
+                {{ t.full_name }}{% if t.telegram_id %} ✅{% else %} (нет Telegram){% endif %}
+            </label>
+            {% endfor %}
+        </div>
+        {% if not teachers %}
+        <p class="hint">Нет других учителей в системе.</p>
+        {% endif %}
+    </div>
+
+    <div id="blockTeacherAdmin" class="broadcast-block-teacher" style="display: none;">
+        <legend>Администрация</legend>
+        <p class="hint">Выберите директора и/или бухгалтера.</p>
+        <div style="max-height: 150px; overflow-y: auto; border: 1px solid var(--border); padding: 0.5rem; border-radius: 8px;">
+            {% for a in administration %}
+            <label style="display: block; margin: 0.35rem 0;">
+                <input type="checkbox" name="admin_ids" value="{{ a.id }}">
+                {{ a.full_name }} ({% if a.role == "administrator" %}администратор{% elif a.role == "director" %}директор{% else %}бухгалтер{% endif %}){% if a.telegram_id %} ✅{% else %} (нет Telegram){% endif %}
+            </label>
+            {% endfor %}
+        </div>
+        {% if not administration %}
+        <p class="hint">Нет пользователей администрации.</p>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <button type="submit" class="btn btn-primary">Отправить рассылку</button>
+</form>
+
+<script>
+(function() {
+    var form = document.getElementById('broadcastForm');
+    var role = '{{ role }}';
+    var blocks = {
+        general_chat: document.getElementById('blockGeneralChat'),
+        class: document.getElementById('blockClass'),
+        parents_of_class: document.getElementById('blockParentsOfClass'),
+        teachers_departments: document.getElementById('blockTeachersDepartments')
+    };
+    var teacherBlocks = {
+        students: document.getElementById('blockTeacherStudents'),
+        class: document.getElementById('blockTeacherClass'),
+        teachers: document.getElementById('blockTeacherTeachers'),
+        administration: document.getElementById('blockTeacherAdmin')
+    };
+    function showBlock(type) {
+        for (var k in blocks) if (blocks[k]) blocks[k].style.display = (k === type) ? 'block' : 'none';
+        if (type === 'parents_of_class') {
+            var sel = document.getElementById('class_grade_parents');
+            var g = sel ? sel.value : '1';
+            for (var i = 0; i <= 11; i++) {
+                var el = document.getElementById('parentsClass' + i);
+                if (el) el.style.display = (String(i) === g) ? 'block' : 'none';
+            }
+        }
+    }
+    function showTeacherBlock(type) {
+        for (var k in teacherBlocks) if (teacherBlocks[k]) teacherBlocks[k].style.display = (k === type) ? 'block' : 'none';
+    }
+    form.querySelectorAll('input[name="recipient_type"]').forEach(function(r) {
+        r.addEventListener('change', function() { showBlock(this.value); });
+    });
+    form.querySelectorAll('input[name="recipient_type_teacher"]').forEach(function(r) {
+        r.addEventListener('change', function() { showTeacherBlock(this.value); });
+    });
+    var classParents = document.getElementById('class_grade_parents');
+    if (classParents) classParents.addEventListener('change', function() { showBlock('parents_of_class'); });
+    if (role === 'teacher') {
+        showTeacherBlock('students');
+    } else if (blocks.teachers_departments) {
+        showBlock('teachers_departments');
+    }
+
+    form.addEventListener('submit', function(e) {
+        if (role === 'teacher') {
+            var rtt = (form.querySelector('input[name="recipient_type_teacher"]:checked') || {}).value;
+            if (rtt === 'students') {
+                var students = form.querySelectorAll('input[name="student_ids"]:checked');
+                if (students.length === 0) { e.preventDefault(); alert('Выберите хотя бы одного ученика.'); return false; }
+            } else if (rtt === 'class') {
+                var cg = document.getElementById('class_grade_teacher');
+                if (!cg || !cg.value) { e.preventDefault(); alert('Выберите класс.'); return false; }
+            } else if (rtt === 'teachers') {
+                var teachers = form.querySelectorAll('input[name="teacher_ids_teacher"]:checked');
+                if (teachers.length === 0) { e.preventDefault(); alert('Выберите хотя бы одного учителя.'); return false; }
+            } else if (rtt === 'administration') {
+                var adm = form.querySelectorAll('input[name="admin_ids"]:checked');
+                if (adm.length === 0) { e.preventDefault(); alert('Выберите хотя бы одного получателя (директор/бухгалтер).'); return false; }
+            }
+            return;
+        }
+        if (role !== 'administrator' && role !== 'director' && role !== 'accountant') return;
+        var rt = (form.querySelector('input[name="recipient_type"]:checked') || {}).value;
+        if (rt === 'general_chat') {
+            var ch = form.querySelectorAll('input[name="channel_ids"]:checked');
+            if (ch.length === 0) { e.preventDefault(); alert('Выберите хотя бы один канал.'); return false; }
+        } else if (rt === 'class') {
+            var cg = form.querySelector('#class_grade_one');
+            if (!cg || !cg.value) { e.preventDefault(); alert('Выберите класс.'); return false; }
+        } else if (rt === 'parents_of_class') {
+            var par = form.querySelectorAll('input[name="parent_ids"]:checked');
+            if (par.length === 0) { e.preventDefault(); alert('Выберите хотя бы одного родителя.'); return false; }
+            var cg2 = document.getElementById('class_grade_parents');
+            if (cg2) {
+                var h2 = document.createElement('input');
+                h2.type = 'hidden';
+                h2.name = 'class_grade';
+                h2.value = cg2.value;
+                form.appendChild(h2);
+            }
+        } else {
+            var teachers = form.querySelectorAll('input[name="teacher_ids"]:checked');
+            var deps = form.querySelectorAll('input[name="department_ids"]:checked');
+            if (teachers.length === 0 && deps.length === 0) {
+                e.preventDefault();
+                alert('Выберите учителей и/или отделы.');
+                return false;
+            }
+        }
+    });
+})();
+</script>
+
+<h2 style="margin-top: 2rem;">История рассылок</h2>
+<div class="table-wrap">
+    <table>
+        <thead>
+            <tr>
+                <th>Дата</th>
+                <th>Кто создал</th>
+                <th>Статус</th>
+                <th>Отправлено / всего</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for b in history %}
+            <tr>
+                <td>{{ (b.created_at or "")[:16] }}</td>
+                <td>{{ b.created_by_name or "—" }}</td>
+                <td>{{ b.status }}</td>
+                <td>{{ b.sent_count or 0 }} / {{ b.total_count or 0 }}{% if (b.failed_count or 0) > 0 %} (не доставлено: {{ b.failed_count }}){% endif %}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% if not history %}
+<p class="hint">Рассылок пока не было.</p>
+{% endif %}
+{% endblock %}

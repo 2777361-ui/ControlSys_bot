@@ -1,0 +1,32 @@
+<script>
+(function() {
+  var body = document.body;
+  var btn = document.getElementById('nav-menu-btn');
+  var overlay = document.getElementById('nav-overlay');
+  var drawer = document.getElementById('nav-drawer');
+  function openMenu() {
+    body.classList.add('nav-drawer-open');
+    if (btn) btn.setAttribute('aria-expanded', 'true');
+    if (overlay) overlay.setAttribute('aria-hidden', 'false');
+  }
+  function closeMenu() {
+    body.classList.remove('nav-drawer-open');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+    if (overlay) overlay.setAttribute('aria-hidden', 'true');
+  }
+  function toggleMenu() {
+    if (body.classList.contains('nav-drawer-open')) closeMenu();
+    else openMenu();
+  }
+  if (btn) btn.addEventListener('click', toggleMenu);
+  if (overlay) overlay.addEventListener('click', closeMenu);
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeMenu();
+  });
+  if (drawer) {
+    drawer.querySelectorAll('a').forEach(function(a) {
+      a.addEventListener('click', closeMenu);
+    });
+  }
+})();
+</script>

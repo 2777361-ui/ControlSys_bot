@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Каналы рассылки — Школьная система{% endblock %}
+{% block content %}
+<h1>Каналы рассылки</h1>
+<p class="hint">Подключите общий чат школы в Telegram, WhatsApp или группу МАХ. Рассылка «В общий чат школы» уйдёт в выбранные каналы. Для Telegram укажите chat_id группы (узнать: добавьте бота в группу и посмотрите через @userinfobot или API).</p>
+
+<form method="post" action="/broadcast/channels/add" style="margin-bottom: 1.5rem;">
+    <div class="form-row">
+        <label for="name">Название</label>
+        <input type="text" id="name" name="name" required placeholder="Например: Общий чат школы ТГ">
+    </div>
+    <div class="form-row">
+        <label for="channel_type">Платформа</label>
+        <select id="channel_type" name="channel_type">
+            <option value="telegram">Telegram</option>
+            <option value="whatsapp">WhatsApp</option>
+            <option value="max">Группа МАХ</option>
+        </select>
+    </div>
+    <div class="form-row">
+        <label for="channel_identifier">Идентификатор (chat_id для Telegram, ссылка или ID для остальных)</label>
+        <input type="text" id="channel_identifier" name="channel_identifier" required placeholder="-1001234567890">
+    </div>
+    <button type="submit" class="btn btn-primary">Добавить канал</button>
+</form>
+
+<div class="table-wrap">
+    <table>
+        <thead>
+            <tr>
+                <th>Название</th>
+                <th>Платформа</th>
+                <th>Идентификатор</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for ch in channels %}
+            <tr>
+                <td>{{ ch.name }}</td>
+                <td>{% if ch.channel_type == 'telegram' %}Telegram{% elif ch.channel_type == 'whatsapp' %}WhatsApp{% else %}МАХ{% endif %}</td>
+                <td><code>{{ ch.channel_identifier[:40] }}{% if ch.channel_identifier|length > 40 %}...{% endif %}</code></td>
+                <td>
+                    <form method="post" action="/broadcast/channels/{{ ch.id }}/delete" style="display:inline;" onsubmit="return confirm('Удалить канал?');">
+                        <button type="submit" class="btn btn-danger">Удалить</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% if not channels %}
+<p class="hint">Каналов пока нет. Добавьте общий чат школы выше.</p>
+{% endif %}
+<p><a href="/broadcast">← К рассылкам</a></p>
+{% endblock %}

@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Группа {{ group.name }} — Школьная система{% endblock %}
+{% block content %}
+<h1>Группа: {{ group.name }}</h1>
+<p class="hint">Участники группы могут быть назначены на задачи (просмотр или исполнитель). Добавляйте родителей, администрацию, учителей.</p>
+<p><a href="/tasks/groups">← К группам</a></p>
+
+<h2>Участники</h2>
+<div class="table-wrap">
+    <table>
+        <thead>
+            <tr><th>ФИО</th><th>Email</th><th>Роль</th><th></th></tr>
+        </thead>
+        <tbody>
+            {% for m in members %}
+            <tr>
+                <td>{{ m.full_name }}</td>
+                <td>{{ m.email or "—" }}</td>
+                <td>{{ m.role }}</td>
+                <td>
+                    <form method="post" action="/tasks/groups/{{ group.id }}/members/remove" style="display: inline;">
+                        <input type="hidden" name="user_id_remove" value="{{ m.id }}">
+                        <button type="submit" class="btn btn-secondary">Убрать</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<form method="post" action="/tasks/groups/{{ group.id }}/members/add" style="margin-top: 1rem;">
+    <div class="form-row" style="max-width: 400px;">
+        <label for="user_id_add">Добавить пользователя</label>
+        <select id="user_id_add" name="user_id_add" required>
+            <option value="">— Выберите —</option>
+            {% for u in users %}
+            {% if u.id not in member_ids %}
+            <option value="{{ u.id }}">{{ u.full_name }} ({{ u.role }})</option>
+            {% endif %}
+            {% endfor %}
+        </select>
+    </div>
+    <button type="submit" class="btn btn-primary">Добавить</button>
+</form>
+{% if not members %}<p class="hint">В группе пока никого нет.</p>{% endif %}
+{% endblock %}

@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Текущие дела — Школьная система{% endblock %}
+{% block content %}
+<h1>Текущие дела</h1>
+<p class="hint">Задачи с контактами для связи. Назначайте группы и исполнителей в карточке задачи. <a href="/tasks/groups">Группы для назначения</a>.</p>
+<p><a href="/tasks/add" class="btn btn-primary">Добавить задачу</a></p>
+
+<div class="table-wrap">
+    <table>
+        <thead>
+            <tr>
+                <th>Название</th>
+                <th>Статус</th>
+                <th>Контакт</th>
+                <th>Создал</th>
+                <th>Обновлено</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for t in tasks %}
+            <tr>
+                <td><a href="/tasks/{{ t.id }}">{{ t.title }}</a></td>
+                <td>{{ t.status }}</td>
+                <td>{{ (t.contact_info or "")[:40] }}{% if (t.contact_info or "")|length > 40 %}…{% endif %}</td>
+                <td>{{ t.created_by_name or "—" }}</td>
+                <td>{{ (t.updated_at or "")[:10] }}</td>
+                <td><a href="/tasks/{{ t.id }}" class="btn btn-secondary">Открыть</a></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% if not tasks %}
+<p class="hint">Задач пока нет.</p>
+{% endif %}
+<p style="margin-top: 1rem;"><a href="/dashboard">← Дашборд</a></p>
+{% endblock %}

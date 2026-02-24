@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Отдел {{ department.name }} — Школьная система{% endblock %}
+{% block content %}
+<h1>Отдел: {{ department.name }}</h1>
+<p><a href="/departments">← К списку отделов</a></p>
+
+<form method="post" action="/departments/{{ department.id }}/edit" style="margin-bottom: 1.5rem;">
+    <div class="form-row" style="max-width: 300px;">
+        <label for="name">Название</label>
+        <input type="text" id="name" name="name" value="{{ department.name }}" required>
+    </div>
+    <button type="submit" class="btn btn-primary">Сохранить</button>
+</form>
+
+<h2>Участники</h2>
+<div class="table-wrap">
+    <table>
+        <thead>
+            <tr>
+                <th>ФИО</th>
+                <th>Роль</th>
+                <th>Telegram</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for m in members %}
+            <tr>
+                <td>{{ m.full_name }}</td>
+                <td>{% if m.role == "administrator" %}Администратор{% elif m.role == "director" %}Директор{% elif m.role == "deputy_director" %}Заместитель директора{% elif m.role == "accountant" %}Бухгалтер{% elif m.role == "teacher" %}Учитель{% elif m.role == "canteen" %}Столовая{% else %}Родитель{% endif %}</td>
+                <td>{% if m.telegram_id %}✅{% else %}—{% endif %}</td>
+                <td>
+                    <form method="post" action="/departments/{{ department.id }}/members/remove" style="display: inline;">
+                        <input type="hidden" name="user_id_remove" value="{{ m.id }}">
+                        <button type="submit" class="btn btn-danger">Убрать</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<form method="post" action="/departments/{{ department.id }}/members/add" style="margin-top: 1rem;">
+    <div class="form-row" style="max-width: 400px;">
+        <label for="user_id_add">Добавить человека</label>
+        <select id="user_id_add" name="user_id_add" required>
+            <option value="">— Выберите пользователя —</option>
+            {% for u in all_users %}
+            {% if u.id not in member_ids %}
+            <option value="{{ u.id }}">{{ u.full_name }} ({% if u.role == "administrator" %}администратор{% elif u.role == "director" %}директор{% elif u.role == "deputy_director" %}заместитель директора{% elif u.role == "accountant" %}бухгалтер{% elif u.role == "teacher" %}учитель{% elif u.role == "canteen" %}столовая{% else %}родитель{% endif %})</option>
+            {% endif %}
+            {% endfor %}
+        </select>
+    </div>
+    <button type="submit" class="btn btn-primary">Добавить</button>
+</form>
+<p class="hint">В выпадающем списке только те, кто ещё не в отделе. Чтобы добавить уже состоящего — уберите его из отдела и снова выберите.</p>
+{% endblock %}

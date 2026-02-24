@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Ученики — Школьная система{% endblock %}
+{% block content %}
+<h1>Ученики</h1>
+{% if request.query_params.get("charged") == "1" %}<p class="success">Списание внесено.</p>{% endif %}
+<p><a href="/students/add" class="btn btn-primary">Добавить ученика</a></p>
+<p class="hint" style="margin-bottom: 1rem;">
+    Чтобы привязать родителя к ученику: нажмите <strong>«Пригласить родителя»</strong> в строке ученика — скопируйте ссылку и отправьте родителю. По ссылке родитель зарегистрируется и привяжется к ребёнку.
+</p>
+<div class="table-wrap"><table>
+    <thead>
+        <tr>
+            <th>ФИО</th>
+            <th>Класс</th>
+            <th>Баланс (₽)</th>
+            <th>Родитель</th>
+            <th>Действия</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for s in students %}
+        <tr>
+            <td>{{ s.full_name }}</td>
+            <td>{{ s.class_grade|class_grade_display }}</td>
+            <td>{{ "%.2f"|format(s.balance|default(0)) }}{% if (s.balance|default(0)) < 0 %} <span class="badge badge-warning">долг</span>{% endif %}</td>
+            <td>{{ s.parent_name or "—" }} {% if s.parent_email %}({{ s.parent_email }}){% endif %}</td>
+            <td>
+                <a href="/students/invite?student_id={{ s.id }}" class="btn btn-primary">Пригласить родителя</a>
+                {% if can_charge %}<a href="/student-charge/add?student_id={{ s.id }}" class="btn btn-secondary">Списание</a>{% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table></div>
+{% endblock %}

@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}Отчёт — Школьная система{% endblock %}
+{% block content %}
+<h1>Отчёт по платежам</h1>
+<p>Задайте фильтры и нажмите «Показать». Сводка: подтверждённые и ожидающие платежи по назначению за выбранный период.</p>
+<form id="reportForm" method="get" action="/report">
+    <div class="form-row">
+        <label for="date_from">Дата с</label>
+        <input type="date" id="date_from" name="date_from" value="{{ filters.date_from }}">
+    </div>
+    <div class="form-row">
+        <label for="date_to">Дата по</label>
+        <input type="date" id="date_to" name="date_to" value="{{ filters.date_to }}">
+    </div>
+    <div class="form-row">
+        <label for="student_id">Ученик</label>
+        <select id="student_id" name="student_id">
+            <option value="">— Все —</option>
+            {% for s in students %}
+            <option value="{{ s.id }}" {% if filters.student_id and filters.student_id == (s.id|string) %}selected{% endif %}>{{ s.full_name }} ({{ s.class_grade|class_grade_display }})</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="form-row">
+        <label for="class_grade">Класс</label>
+        <select id="class_grade" name="class_grade">
+            <option value="">— Все —</option>
+            <option value="0" {% if filters.class_grade == '0' %}selected{% endif %}>Детский сад</option>
+            {% for g in range(1, 12) %}
+            <option value="{{ g }}" {% if filters.class_grade == (g|string) %}selected{% endif %}>{{ g }} класс</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="form-row">
+        <label for="purpose">Назначение</label>
+        <select id="purpose" name="purpose">
+            <option value="">— Все —</option>
+            {% for pp in purposes %}
+            <option value="{{ pp.code }}" {% if filters.purpose == pp.code %}selected{% endif %}>{{ pp.name }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="form-row">
+        <label for="status">Статус</label>
+        <select id="status" name="status">
+            <option value="">— Все —</option>
+            <option value="pending" {% if filters.status == 'pending' %}selected{% endif %}>Ожидает</option>
+            <option value="confirmed" {% if filters.status == 'confirmed' %}selected{% endif %}>Подтверждён</option>
+            <option value="rejected" {% if filters.status == 'rejected' %}selected{% endif %}>Отклонён</option>
+        </select>
+    </div>
+    <div class="form-row">
+        <label for="amount_min">Сумма от</label>
+        <input type="number" id="amount_min" name="amount_min" step="0.01" placeholder="0" value="{{ filters.amount_min }}">
+    </div>
+    <div class="form-row">
+        <label for="amount_max">Сумма до</label>
+        <input type="number" id="amount_max" name="amount_max" step="0.01" placeholder="0" value="{{ filters.amount_max }}">
+    </div>
+    <div class="form-row" style="grid-column: 1 / -1;">
+        <button type="submit" class="btn btn-primary">Показать</button>
+        <a href="#" id="exportLink" class="btn btn-secondary">Скачать CSV</a>
+    </div>
+</form>
+
+{% if totals %}
+<h2>Сводка за период</h2>
+<table style="max-width: 400px;">
+    {% for pp in purposes %}
+    <tr><td>Подтверждённые ({{ pp.name }})</td><td>{{ "%.2f"|format(totals.get('confirmed_' ~ pp.code, 0)) }} ₽</td></tr>
+    {% endfor %}
+    <tr><td>Ожидают подтверждения</td><td>{{ "%.2f"|format(pending_total) }} ₽</td></tr>
+</table>
+{% endif %}
+
+{% if payments is defined and payments %}
+<h2>Платежи ({{ payments|length }})</h2>
+<div class="table-wrap"><table>
+    <thead>
+        <tr>
+            <th>Дата</th>
+            <th>Ученик</th>
+            <th>Класс</th>
+            <th>Сумма</th>
+            <th>Назначение</th>
+            <th>Статус</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for p in payments %}
+        <tr>
+            <td>{{ (p.created_at or "")[:10] }}</td>
+            <td>{{ p.student_name }}</td>
+            <td>{{ p.class_grade|class_grade_display }}</td>
+            <td>{{ "%.2f"|format(p.amount) }} ₽</td>
+            <td>{{ purpose_options.get(p.purpose, p.purpose) }}</td>
+            <td>{% if p.status == 'pending' %}Ожидает{% elif p.status == 'confirmed' %}Подтверждён{% else %}Отклонён{% endif %}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table></div>
+<p><a href="#" id="exportLink2" class="btn btn-primary">Скачать CSV</a></p>
+{% endif %}
+
+<script>
+(function() {
+    var form = document.getElementById('reportForm');
+    if (form) {
+        function doExport(e) {
+            e.preventDefault();
+            var qs = new URLSearchParams(new FormData(form));
+            window.location.href = '/report/export?' + qs.toString();
+        }
+        var L1 = document.getElementById('exportLink');
+        var L2 = document.getElementById('exportLink2');
+        if (L1) L1.addEventListener('click', doExport);
+        if (L2) L2.addEventListener('click', doExport);
+    }
+})();
+</script>
+{% endblock %}

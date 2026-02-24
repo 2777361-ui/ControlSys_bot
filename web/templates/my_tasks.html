@@ -1,0 +1,27 @@
+{% extends "parent_base.html" if is_parent else "base.html" %}
+{% block title %}Мои задачи — Школьная система{% endblock %}
+{% block content %}
+<h1>Мои задачи</h1>
+<p class="hint">Задачи, которые вам назначили (или на группу, в которой вы состоите). Контакт для связи указан в карточке.</p>
+
+{% if tasks %}
+<div class="messages-list">
+    {% for t in tasks %}
+    <article class="message-card">
+        <header class="message-card-header">
+            <span><strong>{{ t.title }}</strong></span>
+            <span class="badge badge-{{ t.status }}">{{ t.status }}</span>
+        </header>
+        {% if t.description %}
+        <div class="message-body">{{ t.description | e }}</div>
+        {% endif %}
+        {% if t.contact_info %}
+        <p class="hint" style="margin-top: 0.5rem;"><strong>Контакт для связи:</strong> {{ t.contact_info | e }}</p>
+        {% endif %}
+    </article>
+    {% endfor %}
+</div>
+{% else %}
+<p class="hint">Вам пока не назначены задачи.</p>
+{% endif %}
+{% endblock %}

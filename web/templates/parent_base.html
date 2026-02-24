@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#1565c0">
+    <title>{% block title %}Личный кабинет{% endblock %}</title>
+    <link rel="icon" type="image/png" href="/static/favicon.png">
+    <link rel="apple-touch-icon" href="/static/favicon.png">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    {% include "partials/add_to_home_banner.html" %}
+    <nav class="nav-wrap">
+        <div class="nav-inner">
+            <a href="/parent" class="nav-brand">
+                <img src="/static/img/logo-dark.png" alt="" class="nav-logo nav-logo-light">
+                <img src="/static/img/logo-white.png" alt="" class="nav-logo nav-logo-dark">
+                <span>Личный кабинет</span>
+            </a>
+            <button type="button" class="nav-menu-btn" id="nav-menu-btn" aria-label="Открыть меню" aria-expanded="false" aria-controls="nav-drawer">
+                <span></span><span></span><span></span>
+            </button>
+        </div>
+    </nav>
+    <div class="nav-overlay" id="nav-overlay" aria-hidden="true"></div>
+    <aside class="nav-drawer" id="nav-drawer" role="dialog" aria-label="Главное меню" aria-modal="true">
+        <div class="nav-drawer-header">
+            <a href="/parent" class="nav-brand">
+                <img src="/static/img/logo-dark.png" alt="" class="nav-logo nav-logo-light">
+                <img src="/static/img/logo-white.png" alt="" class="nav-logo nav-logo-dark">
+                <span>Меню</span>
+            </a>
+        </div>
+        <div class="nav-drawer-body">
+            <div class="nav-drawer-section">
+                <p class="nav-drawer-section-title">Общее</p>
+                <a href="/profile">Профиль</a>
+                <a href="/messages">Сообщения</a>
+                <a href="/feedback">Обратная связь</a>
+                <a href="/my-tasks">Мои задачи</a>
+            </div>
+            <div class="nav-drawer-section">
+                <p class="nav-drawer-section-title">Дети и питание</p>
+                <a href="/parent">Мои дети</a>
+                <a href="/parent/nutrition">План питания</a>
+                <a href="/parent/nutrition-report">Отчёт по питанию</a>
+            </div>
+        </div>
+        <div class="nav-drawer-footer">
+            <div class="nav-drawer-section">
+                <a href="/logout" class="nav-drawer-logout-link">Выход</a>
+            </div>
+        </div>
+    </aside>
+    <main class="page-wrap">
+        <div class="card">
+            {% block content %}{% endblock %}
+        </div>
+    </main>
+    <script>
+    (function() {
+        var theme = document.cookie.replace(/(?:(?:^|.*;\s*)theme\s*=\s*([^;]*).*$)|^.*$/, '$1') || 'system';
+        document.documentElement.dataset.theme = theme;
+    })();
+    </script>
+    {% include "partials/nav_drawer_script.html" %}
+</body>
+</html>

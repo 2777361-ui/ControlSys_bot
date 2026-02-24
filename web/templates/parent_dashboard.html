@@ -1,0 +1,66 @@
+{% extends "parent_base.html" %}
+{% block title %}Мои дети — Школьная система{% endblock %}
+{% block content %}
+<h1>Добро пожаловать, {{ user.full_name or "Родитель" }}</h1>
+<p class="hint">Здесь отображаются ваши дети, сквозной баланс (все пополнения минус все списания: питание, обучение, расходники, продленка и т.д.) и последние платежи/списания. <a href="/parent/nutrition">План питания</a> — по умолчанию завтрак/обед/ужин. <a href="/parent/nutrition-report">Отчёт по питанию за месяц</a>.</p>
+
+{% if purposes_with_prices or meal_prices %}
+<section class="prices-block" style="margin-bottom: 1.5rem;">
+    <h2>Цены (актуальные на текущий момент)</h2>
+    <ul>
+        {% for pp in purposes_with_prices %}
+        <li><strong>{{ pp.name }}</strong>: {{ "%.2f"|format(pp.price|default(0)) }} ₽ {% if pp.charge_frequency == 'monthly' %}(в месяц){% elif pp.charge_frequency == 'daily' %}(ежедневно по факту питания){% else %}(по внесению){% endif %}</li>
+        {% endfor %}
+        <li><strong>Питание</strong>: завтрак {{ "%.2f"|format(meal_prices.breakfast|default(0)) }} ₽, обед {{ "%.2f"|format(meal_prices.lunch|default(0)) }} ₽, ужин {{ "%.2f"|format(meal_prices.dinner|default(0)) }} ₽ (в день)</li>
+    </ul>
+</section>
+{% endif %}
+
+{% if not students %}
+<p>К вам пока не привязаны ученики. Обратитесь в школу или перейдите по ссылке-приглашению.</p>
+{% else %}
+{% for s in students %}
+<section class="student-block">
+    <h2>{{ s.full_name }} — {{ s.class_grade|class_grade_display }}</h2>
+    <p><strong>Баланс:</strong> {{ "%.2f"|format(s.balance or 0) }} ₽ {% if (s.balance or 0) < 0 %}<span class="badge badge-warning">задолженность</span>{% endif %}</p>
+    {% if s.payments %}
+    <p><strong>Последние платежи (пополнения):</strong></p>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr><th>Дата</th><th>Сумма</th><th>Назначение</th><th>Статус</th></tr>
+            </thead>
+            <tbody>
+                {% for p in s.payments %}
+                <tr>
+                    <td>{{ (p.created_at or "")[:10] }}</td>
+                    <td>{{ "%.2f"|format(p.amount or 0) }} ₽</td>
+                    <td>{{ purpose_options.get(p.purpose, p.purpose) }}</td>
+                    <td><span class="badge badge-{{ p.status }}">{{ p.status }}</span></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p>Платежей пока нет.</p>
+    {% endif %}
+    {% if s.charges or s.nutrition_deductions or (s.nutrition_charge_to is defined and s.nutrition_charge_to) %}
+    <p><strong>Списания:</strong></p>
+    <ul>
+        {% for c in (s.charges or []) %}
+        <li>{{ (c.charge_date or "")[:10] }} — {{ c.purpose_name or c.purpose_code }}: {{ "%.2f"|format(c.amount or 0) }} ₽</li>
+        {% endfor %}
+        {% for nd in (s.nutrition_deductions or []) %}
+        <li>{{ (nd.deduction_date or "")[:10] }} — Питание (ученик): {{ "%.2f"|format(nd.amount or 0) }} ₽</li>
+        {% endfor %}
+        {% for nd in (s.nutrition_charge_to or []) %}
+        <li>{{ (nd.deduction_date or "")[:10] }} — Питание (родитель с вашего баланса): {{ "%.2f"|format(nd.amount or 0) }} ₽</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+</section>
+{% endfor %}
+{% endif %}
+<p class="hint">Уведомления и напоминания о платежах можно получать в Telegram-боте школы.</p>
+{% endblock %}

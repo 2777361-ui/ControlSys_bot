@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Регистрация родителя — Школьная система{% endblock %}
+{% block content %}
+<div class="register-card">
+    <h1>Регистрация родителя</h1>
+    <p class="invite-info">Вас приглашают зарегистрироваться как родитель ученика <strong>{{ invitation.student_name }}</strong> ({{ invitation.class_grade|class_grade_display }}).</p>
+    {% if request.query_params.get("error") == "email_taken" %}
+    <p class="error">Этот email уже зарегистрирован. Войдите или укажите другой.</p>
+    {% elif request.query_params.get("error") == "validation" %}
+    <p class="error">Заполните все поля. Пароль — не короче 4 символов.</p>
+    {% endif %}
+    <form method="post" action="/register" class="register-form">
+        <input type="hidden" name="token" value="{{ token }}">
+        <div class="form-row">
+            <label for="full_name">ФИО</label>
+            <input type="text" id="full_name" name="full_name" required placeholder="Иванов Иван Иванович">
+        </div>
+        <div class="form-row">
+            <label for="email">Email (для входа на сайт)</label>
+            <input type="email" id="email" name="email" required placeholder="email@example.com">
+        </div>
+        <div class="form-row">
+            <label for="password">Пароль (не короче 4 символов)</label>
+            <input type="password" id="password" name="password" required minlength="4" placeholder="••••••••">
+        </div>
+        <button type="submit" class="btn btn-primary btn-block">Зарегистрироваться</button>
+    </form>
+    <p class="login-hint"><a href="/login">Уже есть аккаунт? Войти</a></p>
+</div>
+{% endblock %}

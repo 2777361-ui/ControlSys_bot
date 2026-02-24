@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Профиль — Школьная система{% endblock %}
+{% block content %}
+<h1>Профиль пользователя</h1>
+
+<div class="profile-layout">
+    <div class="profile-avatar-block">
+        {% if user.avatar_path %}
+        <img src="/static/{{ user.avatar_path }}" alt="Фото" class="profile-avatar">
+        {% else %}
+        <div class="profile-avatar-placeholder">Фото</div>
+        {% endif %}
+        <form method="post" action="/profile" enctype="multipart/form-data" class="profile-avatar-form">
+            <label for="avatar" class="btn btn-secondary">Выбрать фото</label>
+            <input type="file" id="avatar" name="avatar" accept=".jpg,.jpeg,.png,.gif,.webp" class="profile-avatar-input">
+            <p class="hint">JPG, PNG, GIF или WebP, до 5 МБ</p>
+        </form>
+    </div>
+
+    <div class="profile-settings">
+        <form method="post" action="/profile" enctype="multipart/form-data" id="profileForm">
+            <h2>Настройки</h2>
+
+            <div class="form-row">
+                <label for="full_name">ФИО</label>
+                <input type="text" id="full_name" name="full_name" value="{{ user.full_name or '' }}" required>
+            </div>
+            <div class="form-row">
+                <label for="email">Email (для входа)</label>
+                <input type="email" id="email" name="email" value="{{ user.email or '' }}" placeholder="email@example.com">
+            </div>
+            <div class="form-row">
+                <label for="new_password">Новый пароль (оставьте пустым, чтобы не менять)</label>
+                <input type="password" id="new_password" name="new_password" placeholder="••••••••">
+            </div>
+
+            <div class="form-row">
+                <label>Тема интерфейса</label>
+                <select name="theme_preference" id="theme_preference">
+                    <option value="system" {% if (user.theme_preference or 'system') == 'system' %}selected{% endif %}>Как в системе</option>
+                    <option value="light" {% if user.theme_preference == 'light' %}selected{% endif %}>Светлая</option>
+                    <option value="dark" {% if user.theme_preference == 'dark' %}selected{% endif %}>Тёмная</option>
+                </select>
+            </div>
+
+            <h3 style="margin-top: 1.25rem;">Привязка к мессенджерам</h3>
+            <p class="hint">Укажите контакты для рассылок и связи. Telegram ID нужен для бота школы (узнать: напишите боту /start).</p>
+            <div class="form-row">
+                <label for="telegram_id">Telegram ID</label>
+                <input type="text" id="telegram_id" name="telegram_id" value="{{ user.telegram_id or '' }}" placeholder="Например: 123456789">
+                <p class="hint">Числовой ID. Чтобы привязать аккаунт: откройте бота школы в Telegram и отправьте /start.</p>
+            </div>
+            <div class="form-row">
+                <label for="whatsapp_contact">WhatsApp</label>
+                <input type="text" id="whatsapp_contact" name="whatsapp_contact" value="{{ user.whatsapp_contact or '' }}" placeholder="+79001234567 или username">
+            </div>
+            <div class="form-row">
+                <label for="max_contact">МАХ</label>
+                <input type="text" id="max_contact" name="max_contact" value="{{ user.max_contact or '' }}" placeholder="Контакт или ссылка в МАХ">
+            </div>
+
+            <button type="submit" class="btn btn-primary">Сохранить</button>
+        </form>
+
+        {% if user.role == "parent" and students %}
+        <section class="profile-children">
+            <h2>Мои дети</h2>
+            <ul class="children-list">
+                {% for s in students %}
+                <li>{{ s.full_name }} — {{ s.class_grade|class_grade_display }}</li>
+                {% endfor %}
+            </ul>
+            <p class="hint">Данные по платежам и питанию — в разделе «Мои дети» (для родителей) или в боте.</p>
+        </section>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+(function() {
+    var avatarInput = document.getElementById('avatar');
+    if (avatarInput) {
+        avatarInput.addEventListener('change', function() {
+            if (this.files && this.files.length) this.closest('form').submit();
+        });
+    }
+    var themeSelect = document.getElementById('theme_preference');
+    if (themeSelect) {
+        themeSelect.addEventListener('change', function() {
+            var v = this.value;
+            document.documentElement.dataset.theme = v;
+            document.cookie = 'theme=' + v + ';path=/;max-age=31536000';
+        });
+    }
+})();
+</script>
+{% endblock %}

@@ -12,6 +12,7 @@ _src_dir = Path(__file__).resolve().parent.parent
 if _src_dir not in sys.path:
     sys.path.insert(0, str(_src_dir))
 
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
@@ -19,7 +20,12 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import BotCommand
 
 from bot.config import get_token
-from bot.database import close_db, init_db
+from bot.services.reminders import send_payment_reminders
+from bot.services.broadcast import process_broadcast_queue
+from bot.services.nutrition_deductions import run_daily_nutrition_deductions
+from bot.services.education_charges import run_monthly_education_charges
+from bot.school_db import close_db as close_school_db, init_db as init_school_db
+from bot.middleware.auth import SchoolAuthMiddleware
 from bot.routers import router
 from bot.utils.logging import setup_logging
 
@@ -31,8 +37,8 @@ logger = logging.getLogger(__name__)
 async def main() -> None:
     """Запуск бота: создаём Bot и Dispatcher, подключаем роутеры, запускаем polling."""
 
-    # --- Инициализация базы данных ---
-    init_db()
+    # --- Инициализация базы данных школы ---
+    init_school_db()
     logger.info("="*60)
     logger.info("БОТ ЗАПУСКАЕТСЯ")
     logger.info("="*60)
@@ -43,6 +49,8 @@ async def main() -> None:
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
     dp = Dispatcher(storage=MemoryStorage())
+    dp.message.middleware(SchoolAuthMiddleware())
+    dp.callback_query.middleware(SchoolAuthMiddleware())
     dp.include_router(router)
 
     # Удаляем вебхук, если был (чтобы работал polling)
@@ -53,11 +61,19 @@ async def main() -> None:
         [
             BotCommand(command="start", description="Приветствие и меню"),
             BotCommand(command="help", description="Справка по командам"),
-            BotCommand(command="chat", description="Чат с ИИ (OpenRouter)"),
             BotCommand(command="plus1", description="Прибавить 1 к числу"),
-            BotCommand(command="exit", description="Выход из чата с ИИ"),
         ]
     )
+
+    # Планировщик: напоминания о платежах с 1 по 10 число каждого месяца (9:00 МСК)
+    scheduler = AsyncIOScheduler()
+    scheduler.add_job(send_payment_reminders, "cron", hour=6, minute=0, args=[bot])  # 6:00 UTC = 9:00 МСК
+    scheduler.add_job(process_broadcast_queue, "interval", seconds=30, args=[bot])
+    scheduler.add_job(run_daily_nutrition_deductions, "cron", hour=1, minute=0)
+    scheduler.add_job(run_monthly_education_charges, "cron", day=1, hour=2, minute=0)  # 1-го числа каждого месяца в 02:00 (кроме августа — внутри не начисляем)
+    scheduler.start()
+    logger.info("Планировщик напоминаний о платежах запущен (ежедневно 9:00 МСК)")
+    logger.info("Планировщик рассылок запущен (каждые 30 сек)")
 
     # Получаем информацию о боте (имя, username)
     bot_info = await bot.get_me()
@@ -69,8 +85,9 @@ async def main() -> None:
     except (KeyboardInterrupt, SystemExit):
         logger.info("Получен сигнал остановки")
     finally:
-        # --- Остановка: закрываем БД и логируем ---
-        close_db()
+        scheduler.shutdown(wait=False)
+        # --- Остановка: закрываем БД школы и логируем ---
+        close_school_db()
         logger.info("="*60)
         logger.info("БОТ ОСТАНОВЛЕН")
         logger.info("="*60)

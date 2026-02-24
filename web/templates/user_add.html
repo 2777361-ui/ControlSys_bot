@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Добавить пользователя — Школьная система{% endblock %}
+{% block content %}
+<h1>Добавить пользователя</h1>
+<form method="post" action="/users/add">
+    <div class="form-row">
+        <label for="full_name">ФИО</label>
+        <input type="text" id="full_name" name="full_name" required>
+    </div>
+    <div class="form-row">
+        <label for="email">Email (для входа на сайт)</label>
+        <input type="email" id="email" name="email" placeholder="parent@example.com">
+    </div>
+    <div class="form-row">
+        <label for="role">Роль</label>
+        <select id="role" name="role" required>
+            {% if current_user and current_user.role == 'administrator' %}
+            <option value="administrator">Администратор</option>
+            {% endif %}
+            <option value="director">Директор</option>
+            {% if current_user and current_user.role in ('director', 'administrator') %}
+            <option value="deputy_director">Заместитель директора</option>
+            {% endif %}
+            <option value="accountant">Бухгалтер</option>
+            <option value="teacher">Учитель</option>
+            <option value="canteen">Столовая</option>
+            <option value="parent">Родитель</option>
+        </select>
+    </div>
+    <div class="form-row">
+        <label for="password">Пароль (обязателен для входа: администратор, директор, бухгалтер, учитель, столовая)</label>
+        <input type="password" id="password" name="password" placeholder="Оставьте пустым для родителя">
+    </div>
+    <button type="submit" class="btn btn-primary">Сохранить</button>
+    <a href="/users" class="btn btn-secondary">Отмена</a>
+</form>
+{% endblock %}

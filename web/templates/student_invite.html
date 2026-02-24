@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Ссылка приглашения — Школьная система{% endblock %}
+{% block content %}
+<h1>Приглашение для родителя</h1>
+<p>Отправьте эту ссылку родителю ученика <strong>{{ student.full_name }}</strong> ({{ student.class_grade|class_grade_display }}). Ссылка ведёт на <strong>веб-сайт</strong> школы: родитель откроет её в браузере, зарегистрируется и привяжется к ребёнку (не в Telegram).</p>
+<div class="invite-url-box">
+    <input type="text" id="inviteUrl" readonly value="{{ invite_url }}" class="invite-input">
+    <button type="button" class="btn btn-primary" onclick="copyInvite()">Копировать ссылку</button>
+</div>
+<p class="hint">Ссылка действительна 30 дней. После регистрации родителя по этой ссылке она станет недействительной.</p>
+<p><a href="/students" class="btn btn-secondary">← К списку учеников</a></p>
+<script>
+function copyInvite() {
+    var el = document.getElementById('inviteUrl');
+    el.select();
+    el.setSelectionRange(0, 99999);
+    navigator.clipboard.writeText(el.value).then(function() {
+        var btn = document.querySelector('.invite-url-box .btn');
+        btn.textContent = 'Скопировано!';
+        setTimeout(function() { btn.textContent = 'Копировать ссылку'; }, 2000);
+    });
+}
+</script>
+{% endblock %}

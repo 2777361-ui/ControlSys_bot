@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Платежи — Школьная система{% endblock %}
+{% block content %}
+<h1>История платежей</h1>
+<div class="table-wrap"><table>
+    <thead>
+        <tr>
+            <th>Дата</th>
+            <th>Ученик</th>
+            <th>Класс</th>
+            <th>Сумма</th>
+            <th>Назначение</th>
+            <th>Статус</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for p in payments %}
+        <tr>
+            <td>{{ (p.created_at or "")[:16] }}</td>
+            <td>{{ p.student_name }}</td>
+            <td>{{ p.class_grade|class_grade_display }}</td>
+            <td>{{ "%.2f"|format(p.amount) }} ₽</td>
+            <td>
+                {{ purpose_options.get(p.purpose, p.purpose) }}
+            </td>
+            <td>
+                <span class="badge badge-{{ p.status }}">
+                    {% if p.status == "pending" %}Ожидает{% elif p.status == "confirmed" %}Подтверждён{% else %}Отклонён{% endif %}
+                </span>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table></div>
+<p><a href="/dashboard">На дашборд</a></p>
+{% endblock %}

@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Расклад на {{ data.date }} — Столовая{% endblock %}
+{% block content %}
+<h1>Расклад на {{ data.date }}</h1>
+<p>Кто стоит на завтраке/обеде/ужине по планам родителей. Данные идут в столовую.</p>
+<form method="get" action="/nutrition/canteen" style="margin-bottom: 1rem;">
+    <label for="date">Дата</label>
+    <input type="date" id="date" name="date" value="{{ data.date }}">
+    <button type="submit" class="btn btn-primary">Показать</button>
+</form>
+
+<p><strong>Итого на дату:</strong> Завтрак — {{ data.counts.breakfast }} чел., Обед — {{ data.counts.lunch }} чел., Ужин — {{ data.counts.dinner }} чел.</p>
+<p class="hint">Цены: завтрак {{ "%.2f"|format(prices.breakfast) }} ₽, обед {{ "%.2f"|format(prices.lunch) }} ₽, ужин {{ "%.2f"|format(prices.dinner) }} ₽.</p>
+
+<h2>По классам</h2>
+<div class="table-wrap">
+    <table>
+        <thead>
+            <tr>
+                <th>Класс</th>
+                <th>Ученик</th>
+                <th>Завтрак</th>
+                <th>Обед</th>
+                <th>Ужин</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for class_grade, list in data.by_class.items()|sort %}
+            {% for row in list %}
+            <tr>
+                <td>{{ class_grade|class_grade_display }}</td>
+                <td>{{ row.full_name }}</td>
+                <td>{% if row.has_breakfast %}✓{% endif %}</td>
+                <td>{% if row.has_lunch %}✓{% endif %}</td>
+                <td>{% if row.has_dinner %}✓{% endif %}</td>
+            </tr>
+            {% endfor %}
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% if data.parents %}
+<h2>Взрослые на питании</h2>
+<ul>
+    {% for p in data.parents %}
+    <li>{{ p.full_name }} — завтрак {% if p.has_breakfast %}✓{% else %}—{% endif %}, обед {% if p.has_lunch %}✓{% else %}—{% endif %}, ужин {% if p.has_dinner %}✓{% else %}—{% endif %}</li>
+    {% endfor %}
+</ul>
+{% endif %}
+<p><a href="/nutrition">← К разделу питания</a></p>
+{% endblock %}
