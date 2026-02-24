@@ -2486,6 +2486,8 @@ def _ensure_students_archived_column_pg() -> None:
         return
     conn = get_connection()
     try:
+        # Увеличиваем таймаут на время ALTER (на больших таблицах или под нагрузкой иначе statement timeout)
+        conn.execute("SET LOCAL statement_timeout = '300s'")
         for col, typ, default in [
             ("archived", "BOOLEAN NOT NULL DEFAULT FALSE", None),
             ("deleted_at", "TIMESTAMPTZ", None),
