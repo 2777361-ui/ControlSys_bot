@@ -3,6 +3,11 @@
 {% block content %}
 <h1>План питания</h1>
 <p class="hint">Настройте по умолчанию, на каких приёмах пищи стоит каждый ребёнок (завтрак, обед, ужин). Так вы не забываете снимать ребёнка, если он не ходит на ужин. Эти данные идут в столовую. Можно также встать на питание самому.</p>
+{% if not can_edit_today and cutoff_message %}
+<div class="nutrition-cutoff-alert" role="alert">
+  {{ cutoff_message }} Изменения плана будут действовать только с завтрашнего дня; сегодня и прошедшие дни изменить нельзя.
+</div>
+{% endif %}
 {% if request.query_params.get("ok") %}<p class="success">План сохранён.</p>{% endif %}
 
 <form method="post" action="/parent/nutrition">

@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Настройки питания — Школьная система{% endblock %}
+{% block content %}
+<h1>Настройки: дедлайн редактирования питания</h1>
+<p class="hint">После указанного времени (по времени школы) данные по питанию на <strong>сегодня</strong> изменить нельзя. Будущие и прошедшие дни можно редактировать или размечать заранее. Проверка выполняется на сервере — смена даты/времени у пользователя не поможет.</p>
+
+{% if request.query_params.get("ok") == "1" %}
+<p class="success">Настройки сохранены.</p>
+{% endif %}
+
+<form method="post" action="/nutrition/settings">
+    <div class="form-row">
+        <label for="cutoff_hour">Час дедлайна (0–23)</label>
+        <input type="number" id="cutoff_hour" name="cutoff_hour" min="0" max="23" value="{{ cutoff_hour }}" required>
+    </div>
+    <div class="form-row">
+        <label for="cutoff_minute">Минута (0–59)</label>
+        <input type="number" id="cutoff_minute" name="cutoff_minute" min="0" max="59" value="{{ cutoff_minute }}" required>
+    </div>
+    <div class="form-row">
+        <label for="cutoff_timezone">Часовой пояс (например Уфа: Asia/Yekaterinburg)</label>
+        <input type="text" id="cutoff_timezone" name="cutoff_timezone" value="{{ cutoff_timezone }}" placeholder="Asia/Yekaterinburg" required>
+        <p class="hint">Уфа: Asia/Yekaterinburg (UTC+5). Москва: Europe/Moscow.</p>
+    </div>
+    <button type="submit" class="btn btn-primary">Сохранить</button>
+</form>
+
+<p style="margin-top: 1.5rem;"><a href="/nutrition" class="btn btn-secondary">← К разделу «Питание»</a></p>
+{% endblock %}

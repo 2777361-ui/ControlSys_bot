@@ -11,19 +11,13 @@
     <button type="submit" class="btn btn-primary">Расклад на дату</button>
 </form>
 
-<p><strong>Ввод фактического питания на дату</strong> (завтрак, обед, полдник) — если нужно отмечать, кто реально ел.</p>
-<form method="get" action="/nutrition/enter">
-    <div class="form-row">
-        <label for="date2">Дата</label>
-        <input type="date" id="date2" name="date" required>
-    </div>
-    <button type="submit" class="btn btn-secondary">Ввести данные на дату</button>
-</form>
-
 {% if is_staff %}
 <p style="margin-top: 1.5rem;">
     <a href="/nutrition/prices" class="btn btn-secondary">Цены на питание</a>
     <a href="/nutrition/deduction-add" class="btn btn-secondary">Ручное списание</a>
 </p>
+{% if can_edit_nutrition_settings %}
+<p><a href="/nutrition/settings" class="btn btn-secondary">Настройки: дедлайн редактирования питания</a></p>
+{% endif %}
 {% endif %}
 {% endblock %}

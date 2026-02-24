@@ -3,18 +3,96 @@
 {% block content %}
 <h1>Расклад на {{ data.date }}</h1>
 <p>Кто стоит на завтраке/обеде/ужине по планам родителей. Данные идут в столовую.</p>
-<form method="get" action="/nutrition/canteen" style="margin-bottom: 1rem;">
-    <label for="date">Дата</label>
-    <input type="date" id="date" name="date" value="{{ data.date }}">
-    <button type="submit" class="btn btn-primary">Показать</button>
-</form>
 
-<p><strong>Итого на дату:</strong> Завтрак — {{ data.counts.breakfast }} чел., Обед — {{ data.counts.lunch }} чел., Ужин — {{ data.counts.dinner }} чел.</p>
+<div class="canteen-date-nav" style="margin-bottom: 1rem;">
+    <p class="canteen-date-nav-label">Быстрый выбор даты:</p>
+    <div class="canteen-date-buttons">
+        {% for d in date_buttons_back %}
+        <a href="/nutrition/canteen?date={{ d }}{% if date_from_param %}&date_from={{ date_from_param }}&date_to={{ date_to_param }}{% endif %}" class="btn btn-outline{% if d == today_iso %} canteen-date-today{% endif %}">{{ d[8:10] }}.{{ d[5:7] }}</a>
+        {% endfor %}
+        <span class="btn btn-primary canteen-date-current{% if data.date == today_iso %} canteen-date-today{% endif %}">{{ data.date[8:10] }}.{{ data.date[5:7] }}</span>
+        {% for d in date_buttons_forward %}
+        <a href="/nutrition/canteen?date={{ d }}{% if date_from_param %}&date_from={{ date_from_param }}&date_to={{ date_to_param }}{% endif %}" class="btn btn-outline{% if d == today_iso %} canteen-date-today{% endif %}">{{ d[8:10] }}.{{ d[5:7] }}</a>
+        {% endfor %}
+    </div>
+    <form method="get" action="/nutrition/canteen" class="canteen-date-range-form" style="margin-top: 0.75rem;">
+        <span class="canteen-date-range-label">Свой диапазон:</span>
+        <label for="date_from">от</label>
+        <input type="date" id="date_from" name="date_from" value="{{ date_from_param }}">
+        <label for="date_to">до</label>
+        <input type="date" id="date_to" name="date_to" value="{{ date_to_param }}">
+        <button type="submit" class="btn btn-secondary">Показать</button>
+    </form>
+    {% if date_range_list|length > 1 %}
+    <p class="canteen-date-range-links hint" style="margin-top: 0.5rem;">
+        Даты в диапазоне:
+        {% for d in date_range_list %}
+        {% if d == data.date %}
+        <strong>{{ d[8:10] }}.{{ d[5:7] }}</strong>
+        {% else %}
+        <a href="/nutrition/canteen?date={{ d }}{% if date_from_param %}&date_from={{ date_from_param }}&date_to={{ date_to_param }}{% endif %}">{{ d[8:10] }}.{{ d[5:7] }}</a>{% if not loop.last %}, {% endif %}
+        {% endif %}
+        {% endfor %}
+    </p>
+    {% endif %}
+</div>
+
+<p><strong>Итого на питании:</strong> <strong>{{ data.students|length + data.parents|length }}</strong> чел. (учеников {{ data.students|length }}, взрослых {{ data.parents|length }})</p>
+<p>Завтрак — <strong>{{ data.counts.breakfast }}</strong> чел., Обед — <strong>{{ data.counts.lunch }}</strong> чел., Ужин — <strong>{{ data.counts.dinner }}</strong> чел.</p>
 <p class="hint">Цены: завтрак {{ "%.2f"|format(prices.breakfast) }} ₽, обед {{ "%.2f"|format(prices.lunch) }} ₽, ужин {{ "%.2f"|format(prices.dinner) }} ₽.</p>
 
-<h2>По классам</h2>
+<h2>Количество по классам (включая взрослых)</h2>
 <div class="table-wrap">
-    <table>
+    <table class="canteen-counts-table">
+        <thead>
+            <tr>
+                <th>Класс</th>
+                <th>Завтрак</th>
+                <th>Обед</th>
+                <th>Ужин</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for cg in data.class_grades_sorted %}
+            <tr data-filter-class="{{ cg }}">
+                <td>{{ cg|class_grade_display }}</td>
+                <td>{{ data.by_class_counts.get(cg, {}).get('breakfast', 0) }}</td>
+                <td>{{ data.by_class_counts.get(cg, {}).get('lunch', 0) }}</td>
+                <td>{{ data.by_class_counts.get(cg, {}).get('dinner', 0) }}</td>
+            </tr>
+            {% endfor %}
+            {% if data.parents %}
+            <tr data-filter-class="adults">
+                <td>Взрослые</td>
+                <td>{{ data.counts_adults.breakfast }}</td>
+                <td>{{ data.counts_adults.lunch }}</td>
+                <td>{{ data.counts_adults.dinner }}</td>
+            </tr>
+            {% endif %}
+        </tbody>
+    </table>
+</div>
+
+<h2>Фильтр по классам</h2>
+<p class="hint">Отметьте классы, которые нужно показать в таблице ниже.</p>
+<div class="canteen-filter" role="group" aria-label="Фильтр по классам">
+    {% for cg in data.class_grades_sorted %}
+    <label class="canteen-filter-label">
+        <input type="checkbox" class="canteen-filter-cb" value="{{ cg }}" checked>
+        {{ cg|class_grade_display }}
+    </label>
+    {% endfor %}
+    {% if data.parents %}
+    <label class="canteen-filter-label">
+        <input type="checkbox" class="canteen-filter-cb" value="adults" checked>
+        Взрослые
+    </label>
+    {% endif %}
+</div>
+
+<h2>По классам (список)</h2>
+<div class="table-wrap">
+    <table class="canteen-detail-table">
         <thead>
             <tr>
                 <th>Класс</th>
@@ -25,9 +103,9 @@
             </tr>
         </thead>
         <tbody>
-            {% for class_grade, list in data.by_class.items()|sort %}
-            {% for row in list %}
-            <tr>
+            {% for class_grade in data.class_grades_sorted %}
+            {% for row in data.by_class.get(class_grade, []) %}
+            <tr data-filter-class="{{ class_grade }}">
                 <td>{{ class_grade|class_grade_display }}</td>
                 <td>{{ row.full_name }}</td>
                 <td>{% if row.has_breakfast %}✓{% endif %}</td>
@@ -36,17 +114,33 @@
             </tr>
             {% endfor %}
             {% endfor %}
+            {% for p in data.parents %}
+            <tr data-filter-class="adults">
+                <td>Взрослые</td>
+                <td>{{ p.full_name }}</td>
+                <td>{% if p.has_breakfast %}✓{% else %}—{% endif %}</td>
+                <td>{% if p.has_lunch %}✓{% else %}—{% endif %}</td>
+                <td>{% if p.has_dinner %}✓{% else %}—{% endif %}</td>
+            </tr>
+            {% endfor %}
         </tbody>
     </table>
 </div>
 
-{% if data.parents %}
-<h2>Взрослые на питании</h2>
-<ul>
-    {% for p in data.parents %}
-    <li>{{ p.full_name }} — завтрак {% if p.has_breakfast %}✓{% else %}—{% endif %}, обед {% if p.has_lunch %}✓{% else %}—{% endif %}, ужин {% if p.has_dinner %}✓{% else %}—{% endif %}</li>
-    {% endfor %}
-</ul>
-{% endif %}
+<script>
+(function() {
+  var cbs = document.querySelectorAll('.canteen-filter-cb');
+  var rows = document.querySelectorAll('.canteen-detail-table tbody tr');
+  function applyFilter() {
+    var checked = {};
+    cbs.forEach(function(cb) { checked[cb.value] = cb.checked; });
+    rows.forEach(function(tr) {
+      var key = tr.getAttribute('data-filter-class');
+      tr.style.display = (key && checked[key]) ? '' : 'none';
+    });
+  }
+  cbs.forEach(function(cb) { cb.addEventListener('change', applyFilter); });
+})();
+</script>
 <p><a href="/nutrition">← К разделу питания</a></p>
 {% endblock %}

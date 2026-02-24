@@ -163,6 +163,13 @@ def _redirect_302(url: str) -> None:
     raise HTTPException(status_code=302, detail="Redirect", headers={"Location": url})
 
 
+def _ensure_user_id_int(uid: object) -> int:
+    """Если зависимость по ошибке вернула не int (например RedirectResponse в старом коде) — редирект на логин, иначе возврат uid."""
+    if isinstance(uid, int):
+        return uid
+    raise HTTPException(status_code=302, headers={"Location": "/login"})
+
+
 def require_permission(permission_key: str):
     """Доступ: администратор/директор/бухгалтер всегда; заместитель директора — только если ему выдали это право."""
     def _dep(request: Request):
@@ -574,6 +581,7 @@ ALLOWED_AVATAR_EXT = frozenset({".jpg", ".jpeg", ".png", ".gif", ".webp"})
 @app.get("/profile", response_class=HTMLResponse)
 async def profile_page(request: Request, user_id: int = Depends(require_auth)):
     """Страница профиля: аватар, имя, почта, пароль, тема; у родителей — список детей."""
+    user_id = _ensure_user_id_int(user_id)
     user = school_db.user_by_id(user_id)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
@@ -587,6 +595,7 @@ async def profile_page(request: Request, user_id: int = Depends(require_auth)):
 @app.get("/messages", response_class=HTMLResponse)
 async def messages_page(request: Request, user_id: int = Depends(require_auth)):
     """Входящие рассылки и мои обращения (обратная связь с ответами админки)."""
+    user_id = _ensure_user_id_int(user_id)
     user = school_db.user_by_id(user_id)
     inbox = school_db.broadcast_inbox_for_user(user_id)
     my_feedback = school_db.feedback_list_by_user(user_id)
@@ -601,6 +610,7 @@ async def messages_page(request: Request, user_id: int = Depends(require_auth)):
 @app.get("/feedback", response_class=HTMLResponse)
 async def feedback_page(request: Request, user_id: int = Depends(require_auth)):
     """Форма обратной связи: любой пользователь может написать в админку."""
+    user_id = _ensure_user_id_int(user_id)
     user = school_db.user_by_id(user_id)
     is_parent = user and user.get("role") == "parent"
     return templates.TemplateResponse("feedback.html", {"request": request, "is_parent": is_parent})
@@ -613,6 +623,7 @@ async def feedback_submit(
     user_id: int = Depends(require_auth),
 ):
     """Отправить обратную связь в админку."""
+    user_id = _ensure_user_id_int(user_id)
     if not (message_text or "").strip():
         raise HTTPException(status_code=400, detail="Введите текст сообщения")
     school_db.feedback_create(user_id, message_text.strip())
@@ -887,6 +898,7 @@ async def task_group_member_remove(
 @app.get("/my-tasks", response_class=HTMLResponse)
 async def my_tasks_page(request: Request, user_id: int = Depends(require_auth)):
     """Задачи, которые назначены на текущего пользователя (или на группу, в которой он состоит)."""
+    user_id = _ensure_user_id_int(user_id)
     user = school_db.user_by_id(user_id)
     is_parent = user and user.get("role") == "parent"
     tasks = school_db.tasks_for_user(user_id)
@@ -908,6 +920,7 @@ async def profile_submit(
     user_id: int = Depends(require_auth),
 ):
     """Сохранить настройки профиля и/или загрузить фото. Привязки: Telegram, WhatsApp, МАХ."""
+    user_id = _ensure_user_id_int(user_id)
     from web.auth_utils import hash_password
     if full_name and full_name.strip():
         school_db.user_update(user_id, full_name=full_name.strip())
@@ -2077,9 +2090,10 @@ async def nutrition_index(request: Request, user_id: int = Depends(require_teach
     """Выбор даты: расклад для столовой или ввод данных на дату."""
     user = school_db.user_by_id(user_id)
     is_staff = user and user.get("role") in ("administrator", "director", "accountant")
+    can_edit_nutrition_settings = user and user.get("role") in ("administrator", "director")
     return templates.TemplateResponse(
         "nutrition_index.html",
-        {"request": request, "is_staff": is_staff},
+        {"request": request, "is_staff": is_staff, "can_edit_nutrition_settings": can_edit_nutrition_settings},
     )
 
 
@@ -2087,18 +2101,84 @@ async def nutrition_index(request: Request, user_id: int = Depends(require_teach
 async def nutrition_canteen_view(
     request: Request,
     date: str = None,
+    date_from: str = None,
+    date_to: str = None,
     user_id: int = Depends(require_teacher_or_canteen),
 ):
     """Расклад для столовой на дату: кто на завтраке/обеде/ужине по классам (из планов родителей)."""
+    from datetime import date as date_type, timedelta
+    if not date and date_from and date_to:
+        try:
+            d_from = date_type.fromisoformat(date_from.strip())
+            d_to = date_type.fromisoformat(date_to.strip())
+            if d_from <= d_to:
+                date = date_from.strip()
+        except (ValueError, AttributeError):
+            pass
     if not date:
-        from datetime import date as date_type
         date = date_type.today().isoformat()
     data = school_db.canteen_view_for_date(date)
     prices = school_db.meal_prices_get_all()
+    current = date_type.fromisoformat(date)
+    date_buttons_back = [(current - timedelta(days=k)).isoformat() for k in range(5, 0, -1)]
+    date_buttons_forward = [(current + timedelta(days=k)).isoformat() for k in range(1, 6)]
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    _, _, tz_str = school_db.nutrition_cutoff_get()
+    try:
+        tz = ZoneInfo(tz_str)
+    except Exception:
+        tz = ZoneInfo("Asia/Yekaterinburg")
+    today_iso = datetime.now(tz).strftime("%Y-%m-%d")
+    date_range_list = []
+    if date_from and date_to:
+        try:
+            d_from = date_type.fromisoformat(date_from.strip())
+            d_to = date_type.fromisoformat(date_to.strip())
+            if d_from <= d_to:
+                d = d_from
+                while d <= d_to:
+                    date_range_list.append(d.isoformat())
+                    d += timedelta(days=1)
+        except (ValueError, AttributeError):
+            pass
     return templates.TemplateResponse(
         "nutrition_canteen.html",
-        {"request": request, "data": data, "prices": prices},
+        {
+            "request": request,
+            "data": data,
+            "prices": prices,
+            "date_buttons_back": date_buttons_back,
+            "date_buttons_forward": date_buttons_forward,
+            "date_range_list": date_range_list,
+            "date_from_param": date_from or "",
+            "date_to_param": date_to or "",
+            "today_iso": today_iso,
+        },
     )
+
+
+@app.get("/nutrition/settings", response_class=HTMLResponse)
+async def nutrition_settings_page(request: Request, user_id: int = Depends(require_director)):
+    """Настройка дедлайна редактирования питания: после этого времени (по времени школы) менять данные на сегодня нельзя."""
+    hour, minute, tz_str = school_db.nutrition_cutoff_get()
+    return templates.TemplateResponse(
+        "nutrition_settings.html",
+        {"request": request, "cutoff_hour": hour, "cutoff_minute": minute, "cutoff_timezone": tz_str},
+    )
+
+
+@app.post("/nutrition/settings")
+async def nutrition_settings_submit(
+    request: Request,
+    cutoff_hour: int = Form(8),
+    cutoff_minute: int = Form(0),
+    cutoff_timezone: str = Form("Asia/Yekaterinburg"),
+    user_id: int = Depends(require_director),
+):
+    """Сохранить время дедлайна редактирования питания (по времени школы, например Уфа)."""
+    school_db.nutrition_cutoff_set(cutoff_hour, cutoff_minute, cutoff_timezone.strip())
+    return RedirectResponse(url="/nutrition/settings?ok=1", status_code=302)
 
 
 @app.get("/nutrition/prices", response_class=HTMLResponse)
@@ -2175,15 +2255,32 @@ async def nutrition_deduction_add_submit(
 @app.get("/parent/nutrition", response_class=HTMLResponse)
 async def parent_nutrition_page(request: Request, user_id: int = Depends(require_parent)):
     """План питания по умолчанию: завтрак/обед/ужин для каждого ребёнка и возможность встать на питание самому."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
     user = school_db.user_by_id(user_id)
     students = school_db.students_by_parent_id(user_id)
     plans = {}
     for s in students:
         plans[s["id"]] = school_db.student_meal_plan_get(s["id"])
     parent_plan = school_db.parent_meal_plan_get(user_id)
+    _, _, tz_str = school_db.nutrition_cutoff_get()
+    try:
+        tz = ZoneInfo(tz_str)
+    except Exception:
+        tz = ZoneInfo("Asia/Yekaterinburg")
+    today_iso = datetime.now(tz).strftime("%Y-%m-%d")
+    can_edit_today, cutoff_message = school_db.can_edit_nutrition_for_date(today_iso)
     return templates.TemplateResponse(
         "parent_nutrition.html",
-        {"request": request, "user": user, "students": students, "plans": plans, "parent_plan": parent_plan},
+        {
+            "request": request,
+            "user": user,
+            "students": students,
+            "plans": plans,
+            "parent_plan": parent_plan,
+            "can_edit_today": can_edit_today,
+            "cutoff_message": cutoff_message or "",
+        },
     )
 
 
@@ -2192,8 +2289,19 @@ async def parent_nutrition_submit(
     request: Request,
     user_id: int = Depends(require_parent),
 ):
-    """Сохранить планы питания (дети + сам родитель)."""
+    """Сохранить планы питания (дети + сам родитель). После 8:00 по времени школы правки действуют только с завтрашнего дня."""
+    from datetime import date as date_type, datetime, timedelta
+    from zoneinfo import ZoneInfo
     form = await request.form()
+    # «Сегодня» и дедлайн — по времени школы (обмануть сменой даты у пользователя нельзя)
+    _, _, tz_str = school_db.nutrition_cutoff_get()
+    try:
+        tz = ZoneInfo(tz_str)
+    except Exception:
+        tz = ZoneInfo("Asia/Yekaterinburg")
+    today_iso = datetime.now(tz).strftime("%Y-%m-%d")
+    can_edit_today, _ = school_db.can_edit_nutrition_for_date(today_iso)
+    effective_from = today_iso if can_edit_today else (date_type.today() + timedelta(days=1)).isoformat()
     students = school_db.students_by_parent_id(user_id)
     for s in students:
         sid = str(s["id"])
@@ -2202,6 +2310,7 @@ async def parent_nutrition_submit(
             has_breakfast=form.get(f"child_{sid}_breakfast") == "on",
             has_lunch=form.get(f"child_{sid}_lunch") == "on",
             has_dinner=form.get(f"child_{sid}_dinner") == "on",
+            effective_from=effective_from,
         )
     if form.get("parent_on_nutrition") == "on":
         school_db.parent_meal_plan_set(
@@ -2209,9 +2318,10 @@ async def parent_nutrition_submit(
             has_breakfast=form.get("parent_breakfast") == "on",
             has_lunch=form.get("parent_lunch") == "on",
             has_dinner=form.get("parent_dinner") == "on",
+            effective_from=effective_from,
         )
     else:
-        school_db.parent_meal_plan_remove(user_id)
+        school_db.parent_meal_plan_remove(user_id, effective_from=effective_from)
     return RedirectResponse(url="/parent/nutrition?ok=1", status_code=302)
 
 
@@ -2295,9 +2405,18 @@ async def nutrition_enter_page(
     else:
         students = school_db.students_all()
     existing = {r["student_id"]: r for r in school_db.daily_nutrition_by_date(date)}
+    can_edit, cutoff_message = school_db.can_edit_nutrition_for_date(date)
     return templates.TemplateResponse(
         "nutrition_enter.html",
-        {"request": request, "date": date, "students": students, "students_grouped": students_grouped, "existing": existing},
+        {
+            "request": request,
+            "date": date,
+            "students": students,
+            "students_grouped": students_grouped,
+            "existing": existing,
+            "can_edit_nutrition": can_edit,
+            "cutoff_message": cutoff_message,
+        },
     )
 
 
@@ -2307,7 +2426,10 @@ async def nutrition_enter_submit(
     date: str = Form(...),
     user_id: int = Depends(require_teacher_or_canteen),
 ):
-    """Сохранить данные по питанию на дату. Учитель может сохранять только по своим классам."""
+    """Сохранить данные по питанию на дату. Учитель может сохранять только по своим классам. После дедлайна (настраивается в админке) сегодняшний день менять нельзя."""
+    can_edit, err_msg = school_db.can_edit_nutrition_for_date(date)
+    if not can_edit:
+        raise HTTPException(status_code=403, detail=err_msg)
     form = await request.form()
     user = school_db.user_by_id(user_id)
     role = user.get("role") if user else None

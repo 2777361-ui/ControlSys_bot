@@ -16,6 +16,8 @@
         <label for="new_password">Новый пароль (оставьте пустым, чтобы не менять)</label>
         <input type="password" id="new_password" name="new_password" placeholder="Не заполняйте, если менять не нужно">
     </div>
+    <h3 style="margin-top: 1.25rem;">Привязка к мессенджерам</h3>
+    {% include "partials/messenger_link_help.html" %}
     <div class="form-row">
         <label for="telegram_id">Telegram ID (для родителей — привязка к боту)</label>
         <input type="text" id="telegram_id" name="telegram_id" value="{{ user.telegram_id or '' }}" placeholder="Например: 123456789">

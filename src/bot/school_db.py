@@ -15,6 +15,7 @@ import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
 
@@ -450,6 +451,13 @@ def _init_db_postgres() -> None:
         )
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_accounting_income_extra_date ON accounting_income_extra(income_date)")
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS app_settings (
+            key   TEXT PRIMARY KEY,
+            value TEXT NOT NULL DEFAULT ''
+        )
+    """)
+    conn.execute("INSERT INTO app_settings (key, value) VALUES ('nutrition_cutoff_hour', '8'), ('nutrition_cutoff_minute', '0'), ('nutrition_cutoff_timezone', 'Asia/Yekaterinburg') ON CONFLICT (key) DO NOTHING")
     # Индексы
     for idx, stmt in [
         ("idx_users_telegram", "CREATE INDEX IF NOT EXISTS idx_users_telegram ON users(telegram_id)"),
@@ -499,13 +507,42 @@ def _init_db_postgres() -> None:
     # Колонка «в архиве» для учеников (существующие БД могли быть без неё)
     try:
         conn.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS archived BOOLEAN NOT NULL DEFAULT FALSE")
-    except Exception:
-        pass
+        conn.commit()
+        logger.info("PostgreSQL: колонка students.archived проверена/добавлена")
+    except Exception as e:
+        logger.warning("PostgreSQL: не удалось добавить students.archived: %s", e)
+        conn.rollback()
     # Колонка запланированной даты рассылки (существующие БД могли быть без неё)
     try:
         conn.execute("ALTER TABLE broadcast_tasks ADD COLUMN IF NOT EXISTS scheduled_at TIMESTAMPTZ")
-    except Exception:
-        pass
+        conn.commit()
+        logger.info("PostgreSQL: колонка broadcast_tasks.scheduled_at проверена/добавлена")
+    except Exception as e:
+        logger.warning("PostgreSQL: не удалось добавить broadcast_tasks.scheduled_at: %s", e)
+        conn.rollback()
+    # Планы питания: effective_from — с какой даты действует план (после 8:00 правки родителя только с завтра)
+    for table, id_col in [("student_meal_plan", "student_id"), ("parent_meal_plan", "user_id")]:
+        try:
+            row = conn.execute(
+                """
+                SELECT 1 FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = ? AND column_name = 'effective_from'
+                """,
+                (table,),
+            ).fetchone()
+            if row:
+                continue
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN effective_from DATE NOT NULL DEFAULT '2000-01-01'")
+            conn.execute(f"ALTER TABLE {table} DROP CONSTRAINT IF EXISTS {table}_pkey")
+            conn.execute(f"ALTER TABLE {table} ADD PRIMARY KEY ({id_col}, effective_from)")
+            conn.commit()
+            logger.info("PostgreSQL: добавлена колонка %s.effective_from", table)
+        except Exception as e:
+            logger.warning("PostgreSQL: не удалось добавить %s.effective_from: %s", table, e)
+            try:
+                conn.rollback()
+            except Exception:
+                pass
     conn.commit()
     logger.info("Таблицы PostgreSQL (Supabase) готовы")
 
@@ -814,6 +851,8 @@ def init_db() -> None:
     _migrate_accounting_income_extra(conn)
     _migrate_students_archived(conn)
     _migrate_broadcast_scheduled_at(conn)
+    _migrate_app_settings(conn)
+    _migrate_meal_plan_effective_from(conn)
     conn.commit()
     logger.info("Таблицы школьной БД готовы")
 
@@ -994,6 +1033,69 @@ def _migrate_broadcast_scheduled_at(conn: sqlite3.Connection) -> None:
     if "scheduled_at" not in cols:
         conn.execute("ALTER TABLE broadcast_tasks ADD COLUMN scheduled_at TEXT")
         logger.info("Миграция: broadcast_tasks.scheduled_at")
+
+
+def _migrate_app_settings(conn: sqlite3.Connection) -> None:
+    """Таблица настроек приложения (в т.ч. дедлайн редактирования питания по времени Уфы)."""
+    cur = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='app_settings'")
+    if cur.fetchone():
+        return
+    conn.execute("""
+        CREATE TABLE app_settings (
+            key   TEXT PRIMARY KEY,
+            value TEXT NOT NULL DEFAULT ''
+        )
+    """)
+    conn.execute("INSERT INTO app_settings (key, value) VALUES ('nutrition_cutoff_hour', '8'), ('nutrition_cutoff_minute', '0'), ('nutrition_cutoff_timezone', 'Asia/Yekaterinburg')")
+    logger.info("Миграция: таблица app_settings")
+
+
+def _migrate_meal_plan_effective_from(conn: sqlite3.Connection) -> None:
+    """Добавить effective_from в планы питания: после дедлайна (8:00) правки родителя действуют только с завтрашнего дня."""
+    # student_meal_plan
+    cur = conn.execute("PRAGMA table_info(student_meal_plan)")
+    cols = {row[1] for row in cur.fetchall()}
+    if "effective_from" not in cols:
+        conn.execute("ALTER TABLE student_meal_plan RENAME TO student_meal_plan_old")
+        conn.execute("""
+            CREATE TABLE student_meal_plan (
+                student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+                effective_from TEXT NOT NULL DEFAULT '2000-01-01',
+                has_breakfast INTEGER NOT NULL DEFAULT 1,
+                has_lunch INTEGER NOT NULL DEFAULT 1,
+                has_dinner INTEGER NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                PRIMARY KEY (student_id, effective_from)
+            )
+        """)
+        conn.execute("""
+            INSERT INTO student_meal_plan (student_id, effective_from, has_breakfast, has_lunch, has_dinner, updated_at)
+            SELECT student_id, '2000-01-01', has_breakfast, has_lunch, has_dinner, updated_at FROM student_meal_plan_old
+        """)
+        conn.execute("DROP TABLE student_meal_plan_old")
+        logger.info("Миграция: student_meal_plan.effective_from")
+    # parent_meal_plan
+    cur = conn.execute("PRAGMA table_info(parent_meal_plan)")
+    cols = {row[1] for row in cur.fetchall()}
+    if "effective_from" not in cols:
+        conn.execute("ALTER TABLE parent_meal_plan RENAME TO parent_meal_plan_old")
+        conn.execute("""
+            CREATE TABLE parent_meal_plan (
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                effective_from TEXT NOT NULL DEFAULT '2000-01-01',
+                has_breakfast INTEGER NOT NULL DEFAULT 0,
+                has_lunch INTEGER NOT NULL DEFAULT 0,
+                has_dinner INTEGER NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                PRIMARY KEY (user_id, effective_from)
+            )
+        """)
+        conn.execute("""
+            INSERT INTO parent_meal_plan (user_id, effective_from, has_breakfast, has_lunch, has_dinner, updated_at)
+            SELECT user_id, '2000-01-01', has_breakfast, has_lunch, has_dinner, updated_at FROM parent_meal_plan_old
+        """)
+        conn.execute("DROP TABLE parent_meal_plan_old")
+        logger.info("Миграция: parent_meal_plan.effective_from")
 
 
 def _migrate_payments_purpose(conn: sqlite3.Connection) -> None:
@@ -2071,6 +2173,7 @@ def student_create(
 
 def students_by_parent_id(parent_id: int) -> list[dict[str, Any]]:
     """Все активные (не в архиве) ученики, у которых этот пользователь числится родителем."""
+    _ensure_students_archived_column_pg()
     conn = get_connection()
     where_archived = _archived_condition(False)
     rows = conn.execute(
@@ -2144,8 +2247,39 @@ def _archived_condition(include_archived: bool, table_alias: str = "s") -> str:
     return f"({table_alias}.archived = 0 OR {table_alias}.archived IS NULL)"
 
 
+# Кэш: колонка students.archived уже проверена для PostgreSQL (избегаем лишних запросов).
+_students_archived_column_ensured = False
+
+
+def _ensure_students_archived_column_pg() -> None:
+    """Для PostgreSQL: если в таблице students нет колонки archived — добавить (существующие БД на Supabase)."""
+    global _students_archived_column_ensured
+    if not is_postgres() or _students_archived_column_ensured:
+        return
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            """
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'students' AND column_name = 'archived'
+            """
+        ).fetchone()
+        if not row:
+            conn.execute("ALTER TABLE students ADD COLUMN archived BOOLEAN NOT NULL DEFAULT FALSE")
+            conn.commit()
+            logger.info("PostgreSQL: добавлена колонка students.archived")
+    except Exception as e:
+        logger.warning("PostgreSQL: не удалось добавить students.archived при обращении: %s", e)
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+    _students_archived_column_ensured = True
+
+
 def students_all(include_archived: bool = False) -> list[dict[str, Any]]:
     """Все ученики (для бухгалтера/директора); по умолчанию только активные (не в архиве)."""
+    _ensure_students_archived_column_pg()
     conn = get_connection()
     where = _archived_condition(include_archived)
     rows = conn.execute(
@@ -2171,6 +2305,7 @@ def student_set_archived(student_id: int, archived: bool) -> bool:
 
 def students_by_class_grade(class_grade: int) -> list[dict[str, Any]]:
     """Ученики одного класса (только активные, не в архиве)."""
+    _ensure_students_archived_column_pg()
     conn = get_connection()
     where_archived = _archived_condition(False)
     rows = conn.execute(
@@ -3079,6 +3214,7 @@ def education_price_get() -> float:
 
 def process_education_charges_for_month(month_date: str) -> int:
     """Начислить обучение за учебный месяц (1-е число): по всем ученикам одна сумма из справочника. month_date — дата 1-го числа месяца (YYYY-MM-DD). Возвращает число созданных списаний."""
+    _ensure_students_archived_column_pg()
     price = education_price_get()
     if price <= 0:
         return 0
@@ -3131,10 +3267,13 @@ def meal_prices_set(meal_type: str, price: float) -> None:
 # --- План питания ученика (родитель настраивает по умолчанию) ---
 
 def student_meal_plan_get(student_id: int) -> dict[str, Any] | None:
-    """План питания ученика: завтрак/обед/ужин вкл/выкл."""
+    """План питания ученика: завтрак/обед/ужин вкл/выкл (последний по дате вступления в силу)."""
     conn = get_connection()
     row = conn.execute(
-        "SELECT student_id, has_breakfast, has_lunch, has_dinner FROM student_meal_plan WHERE student_id = ?",
+        """
+        SELECT student_id, has_breakfast, has_lunch, has_dinner FROM student_meal_plan
+        WHERE student_id = ? ORDER BY effective_from DESC LIMIT 1
+        """,
         (student_id,),
     ).fetchone()
     if not row:
@@ -3142,20 +3281,26 @@ def student_meal_plan_get(student_id: int) -> dict[str, Any] | None:
     return {"student_id": row[0], "has_breakfast": bool(row[1]), "has_lunch": bool(row[2]), "has_dinner": bool(row[3])}
 
 
-def student_meal_plan_set(student_id: int, has_breakfast: bool = True, has_lunch: bool = True, has_dinner: bool = False) -> None:
-    """Сохранить план питания ученика (родитель ставит ребёнка на завтрак/обед/ужин)."""
+def student_meal_plan_set(
+    student_id: int,
+    has_breakfast: bool = True,
+    has_lunch: bool = True,
+    has_dinner: bool = False,
+    effective_from: str = "",
+) -> None:
+    """Сохранить план питания ученика. effective_from — с какой даты действует (YYYY-MM-DD); после дедлайна 8:00 передают завтра."""
     conn = get_connection()
     conn.execute(
         """
-        INSERT INTO student_meal_plan (student_id, has_breakfast, has_lunch, has_dinner, updated_at)
-        VALUES (?, ?, ?, ?, datetime('now'))
-        ON CONFLICT(student_id) DO UPDATE SET
+        INSERT INTO student_meal_plan (student_id, effective_from, has_breakfast, has_lunch, has_dinner, updated_at)
+        VALUES (?, ?, ?, ?, ?, datetime('now'))
+        ON CONFLICT(student_id, effective_from) DO UPDATE SET
             has_breakfast = excluded.has_breakfast,
             has_lunch = excluded.has_lunch,
             has_dinner = excluded.has_dinner,
             updated_at = datetime('now')
         """,
-        (student_id, 1 if has_breakfast else 0, 1 if has_lunch else 0, 1 if has_dinner else 0),
+        (student_id, effective_from, 1 if has_breakfast else 0, 1 if has_lunch else 0, 1 if has_dinner else 0),
     )
     conn.commit()
 
@@ -3163,10 +3308,13 @@ def student_meal_plan_set(student_id: int, has_breakfast: bool = True, has_lunch
 # --- Родитель на питании (сам себя ставит) ---
 
 def parent_meal_plan_get(user_id: int) -> dict[str, Any] | None:
-    """План питания родителя (если стоит на питании)."""
+    """План питания родителя (последний по дате вступления в силу)."""
     conn = get_connection()
     row = conn.execute(
-        "SELECT user_id, has_breakfast, has_lunch, has_dinner FROM parent_meal_plan WHERE user_id = ?",
+        """
+        SELECT user_id, has_breakfast, has_lunch, has_dinner FROM parent_meal_plan
+        WHERE user_id = ? ORDER BY effective_from DESC LIMIT 1
+        """,
         (user_id,),
     ).fetchone()
     if not row:
@@ -3174,28 +3322,42 @@ def parent_meal_plan_get(user_id: int) -> dict[str, Any] | None:
     return {"user_id": row[0], "has_breakfast": bool(row[1]), "has_lunch": bool(row[2]), "has_dinner": bool(row[3])}
 
 
-def parent_meal_plan_set(user_id: int, has_breakfast: bool = False, has_lunch: bool = False, has_dinner: bool = False) -> None:
-    """Включить/выключить родителя в питании (завтрак/обед/ужин)."""
+def parent_meal_plan_set(
+    user_id: int,
+    has_breakfast: bool = False,
+    has_lunch: bool = False,
+    has_dinner: bool = False,
+    effective_from: str = "",
+) -> None:
+    """Включить родителя в питании. effective_from — с какой даты действует (после дедлайна 8:00 передают завтра)."""
     conn = get_connection()
     conn.execute(
         """
-        INSERT INTO parent_meal_plan (user_id, has_breakfast, has_lunch, has_dinner, updated_at)
-        VALUES (?, ?, ?, ?, datetime('now'))
-        ON CONFLICT(user_id) DO UPDATE SET
+        INSERT INTO parent_meal_plan (user_id, effective_from, has_breakfast, has_lunch, has_dinner, updated_at)
+        VALUES (?, ?, ?, ?, ?, datetime('now'))
+        ON CONFLICT(user_id, effective_from) DO UPDATE SET
             has_breakfast = excluded.has_breakfast,
             has_lunch = excluded.has_lunch,
             has_dinner = excluded.has_dinner,
             updated_at = datetime('now')
         """,
-        (user_id, 1 if has_breakfast else 0, 1 if has_lunch else 0, 1 if has_dinner else 0),
+        (user_id, effective_from, 1 if has_breakfast else 0, 1 if has_lunch else 0, 1 if has_dinner else 0),
     )
     conn.commit()
 
 
-def parent_meal_plan_remove(user_id: int) -> None:
-    """Убрать родителя из питания."""
+def parent_meal_plan_remove(user_id: int, effective_from: str = "") -> None:
+    """Убрать родителя из питания с даты effective_from (запись с нулями по приёмам пищи)."""
     conn = get_connection()
-    conn.execute("DELETE FROM parent_meal_plan WHERE user_id = ?", (user_id,))
+    conn.execute(
+        """
+        INSERT INTO parent_meal_plan (user_id, effective_from, has_breakfast, has_lunch, has_dinner, updated_at)
+        VALUES (?, ?, 0, 0, 0, datetime('now'))
+        ON CONFLICT(user_id, effective_from) DO UPDATE SET
+            has_breakfast = 0, has_lunch = 0, has_dinner = 0, updated_at = datetime('now')
+        """,
+        (user_id, effective_from),
+    )
     conn.commit()
 
 
@@ -3284,23 +3446,31 @@ def nutrition_deductions_for_student_charge_to(
 # --- Вид для столовой: кто на питании на дату (по планам) ---
 
 def canteen_view_for_date(target_date: str) -> dict[str, Any]:
-    """По дате: список учеников по классам с планом (завтрак/обед/ужин) и список родителей на питании."""
+    """По дате: список учеников по классам с планом (завтрак/обед/ужин) и список родителей на питании.
+    Используется план, действующий на target_date (effective_from <= target_date, последний по дате)."""
+    _ensure_students_archived_column_pg()
     conn = get_connection()
     students_rows = conn.execute(
         """
-        SELECT s.id, s.full_name, s.class_grade, COALESCE(smp.has_breakfast, 1) AS has_breakfast,
-               COALESCE(smp.has_lunch, 1) AS has_lunch, COALESCE(smp.has_dinner, 0) AS has_dinner
+        SELECT s.id, s.full_name, s.class_grade,
+               COALESCE((SELECT smp.has_breakfast FROM student_meal_plan smp WHERE smp.student_id = s.id AND smp.effective_from <= ? ORDER BY smp.effective_from DESC LIMIT 1), 1) AS has_breakfast,
+               COALESCE((SELECT smp.has_lunch FROM student_meal_plan smp WHERE smp.student_id = s.id AND smp.effective_from <= ? ORDER BY smp.effective_from DESC LIMIT 1), 1) AS has_lunch,
+               COALESCE((SELECT smp.has_dinner FROM student_meal_plan smp WHERE smp.student_id = s.id AND smp.effective_from <= ? ORDER BY smp.effective_from DESC LIMIT 1), 0) AS has_dinner
         FROM students s
-        LEFT JOIN student_meal_plan smp ON s.id = smp.student_id
+        WHERE (s.archived = 0 OR s.archived IS NULL)
         ORDER BY s.class_grade, s.full_name
-        """
+        """,
+        (target_date, target_date, target_date),
     ).fetchall()
     students = [dict(r) for r in students_rows]
     by_class: dict[str, list[dict]] = {}
+    counts_students = {"breakfast": 0, "lunch": 0, "dinner": 0}
+    by_class_counts: dict[str, dict[str, int]] = {}
     for r in students:
         key = str(r["class_grade"])
         if key not in by_class:
             by_class[key] = []
+            by_class_counts[key] = {"breakfast": 0, "lunch": 0, "dinner": 0}
         by_class[key].append({
             "id": r["id"],
             "full_name": r["full_name"],
@@ -3309,50 +3479,72 @@ def canteen_view_for_date(target_date: str) -> dict[str, Any]:
             "has_lunch": bool(r["has_lunch"]),
             "has_dinner": bool(r["has_dinner"]),
         })
-    counts = {"breakfast": 0, "lunch": 0, "dinner": 0}
-    for row in students:
-        if row.get("has_breakfast"):
-            counts["breakfast"] += 1
-        if row.get("has_lunch"):
-            counts["lunch"] += 1
-        if row.get("has_dinner"):
-            counts["dinner"] += 1
+        if r.get("has_breakfast"):
+            counts_students["breakfast"] += 1
+            by_class_counts[key]["breakfast"] += 1
+        if r.get("has_lunch"):
+            counts_students["lunch"] += 1
+            by_class_counts[key]["lunch"] += 1
+        if r.get("has_dinner"):
+            counts_students["dinner"] += 1
+            by_class_counts[key]["dinner"] += 1
+    counts = {"breakfast": counts_students["breakfast"], "lunch": counts_students["lunch"], "dinner": counts_students["dinner"]}
+    # Родители на питании на target_date: план с effective_from <= target_date (последний по дате), хотя бы один приём
     parents = conn.execute(
         """
-        SELECT u.id, u.full_name, pmp.has_breakfast, pmp.has_lunch, pmp.has_dinner
-        FROM parent_meal_plan pmp
-        JOIN users u ON pmp.user_id = u.id
-        WHERE u.is_active = 1
+        SELECT u.id, u.full_name, p.has_breakfast, p.has_lunch, p.has_dinner
+        FROM users u
+        JOIN (
+            SELECT pmp.user_id, pmp.has_breakfast, pmp.has_lunch, pmp.has_dinner
+            FROM parent_meal_plan pmp
+            WHERE pmp.effective_from <= ?
+            AND pmp.effective_from = (SELECT max(p2.effective_from) FROM parent_meal_plan p2 WHERE p2.user_id = pmp.user_id AND p2.effective_from <= ?)
+        ) p ON p.user_id = u.id
+        WHERE u.is_active = 1 AND (p.has_breakfast = 1 OR p.has_lunch = 1 OR p.has_dinner = 1)
         ORDER BY u.full_name
-        """
+        """,
+        (target_date, target_date),
     ).fetchall()
     parent_list = [{"id": r["id"], "full_name": r["full_name"], "has_breakfast": bool(r["has_breakfast"]), "has_lunch": bool(r["has_lunch"]), "has_dinner": bool(r["has_dinner"])} for r in parents]
-    for r in parents:
+    counts_adults = {"breakfast": 0, "lunch": 0, "dinner": 0}
+    for r in parent_list:
         if r["has_breakfast"]:
             counts["breakfast"] += 1
+            counts_adults["breakfast"] += 1
         if r["has_lunch"]:
             counts["lunch"] += 1
+            counts_adults["lunch"] += 1
         if r["has_dinner"]:
             counts["dinner"] += 1
+            counts_adults["dinner"] += 1
     return {
         "date": target_date,
         "by_class": by_class,
         "students": students,
         "parents": parent_list,
         "counts": counts,
+        "counts_students": counts_students,
+        "counts_adults": counts_adults,
+        "by_class_counts": by_class_counts,
+        "class_grades_sorted": sorted(by_class.keys(), key=lambda k: int(k) if k.isdigit() else -1),
     }
 
 
 # --- Начисление списаний за дату (по планам и ценам) — вызывать ежедневно ---
 
 def process_nutrition_deductions_for_date(target_date: str) -> int:
-    """Создать списания за дату для всех учеников и родителей по плану и текущим ценам. Возвращает число созданных записей."""
+    """Создать списания за дату по плану, действующему на эту дату (effective_from <= target_date), и текущим ценам."""
     prices = meal_prices_get_all()
     conn = get_connection()
     created = 0
-    for row in conn.execute(
-        "SELECT s.id, COALESCE(smp.has_breakfast, 1), COALESCE(smp.has_lunch, 1), COALESCE(smp.has_dinner, 0) FROM students s LEFT JOIN student_meal_plan smp ON s.id = smp.student_id"
-    ).fetchall():
+    students_plan_sql = """
+        SELECT s.id,
+               COALESCE((SELECT smp.has_breakfast FROM student_meal_plan smp WHERE smp.student_id = s.id AND smp.effective_from <= ? ORDER BY smp.effective_from DESC LIMIT 1), 1),
+               COALESCE((SELECT smp.has_lunch FROM student_meal_plan smp WHERE smp.student_id = s.id AND smp.effective_from <= ? ORDER BY smp.effective_from DESC LIMIT 1), 1),
+               COALESCE((SELECT smp.has_dinner FROM student_meal_plan smp WHERE smp.student_id = s.id AND smp.effective_from <= ? ORDER BY smp.effective_from DESC LIMIT 1), 0)
+        FROM students s
+    """
+    for row in conn.execute(students_plan_sql, (target_date, target_date, target_date)).fetchall():
         student_id, b, l, d = row[0], bool(row[1]), bool(row[2]), bool(row[3])
         amt_b = prices.get("breakfast", 0) if b else 0
         amt_l = prices.get("lunch", 0) if l else 0
@@ -3371,7 +3563,17 @@ def process_nutrition_deductions_for_date(target_date: str) -> int:
             (student_id, target_date, total, amt_b, amt_l, amt_d),
         )
         created += 1
-    for row in conn.execute("SELECT user_id, has_breakfast, has_lunch, has_dinner FROM parent_meal_plan").fetchall():
+    parents_plan_sql = """
+        SELECT p.user_id, p.has_breakfast, p.has_lunch, p.has_dinner
+        FROM (
+            SELECT pmp.user_id, pmp.has_breakfast, pmp.has_lunch, pmp.has_dinner
+            FROM parent_meal_plan pmp
+            WHERE pmp.effective_from <= ?
+            AND pmp.effective_from = (SELECT max(p2.effective_from) FROM parent_meal_plan p2 WHERE p2.user_id = pmp.user_id AND p2.effective_from <= ?)
+        ) p
+        WHERE p.has_breakfast = 1 OR p.has_lunch = 1 OR p.has_dinner = 1
+    """
+    for row in conn.execute(parents_plan_sql, (target_date, target_date)).fetchall():
         uid, b, l, d = row[0], bool(row[1]), bool(row[2]), bool(row[3])
         amt_b = prices.get("breakfast", 0) if b else 0
         amt_l = prices.get("lunch", 0) if l else 0
@@ -3758,6 +3960,70 @@ def parent_report_mark_dismissed(report_id: int, resolved_by_user_id: int) -> bo
     )
     conn.commit()
     return cur.rowcount > 0
+
+
+# --- Настройки приложения (дедлайн редактирования питания) ---
+
+def app_settings_get(key: str) -> str:
+    """Значение настройки по ключу (пустая строка если нет)."""
+    conn = get_connection()
+    row = conn.execute("SELECT value FROM app_settings WHERE key = ?", (key,)).fetchone()
+    if not row:
+        return ""
+    return (row.get("value") if hasattr(row, "get") else row[0]) or ""
+
+
+def app_settings_set(key: str, value: str) -> None:
+    """Установить значение настройки."""
+    conn = get_connection()
+    conn.execute(
+        "INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (key, value),
+    )
+    conn.commit()
+
+
+def nutrition_cutoff_get() -> tuple[int, int, str]:
+    """Время дедлайна редактирования питания (час 0–23, минута 0–59, таймзона). По умолчанию 8:00 Уфа (Asia/Yekaterinburg)."""
+    hour = int(app_settings_get("nutrition_cutoff_hour") or "8")
+    minute = int(app_settings_get("nutrition_cutoff_minute") or "0")
+    tz_str = (app_settings_get("nutrition_cutoff_timezone") or "Asia/Yekaterinburg").strip()
+    if not tz_str:
+        tz_str = "Asia/Yekaterinburg"
+    hour = max(0, min(23, hour))
+    minute = max(0, min(59, minute))
+    return hour, minute, tz_str
+
+
+def nutrition_cutoff_set(hour: int, minute: int, timezone_str: str) -> None:
+    """Сохранить время дедлайна редактирования питания."""
+    app_settings_set("nutrition_cutoff_hour", str(max(0, min(23, hour))))
+    app_settings_set("nutrition_cutoff_minute", str(max(0, min(59, minute))))
+    app_settings_set("nutrition_cutoff_timezone", (timezone_str or "Asia/Yekaterinburg").strip())
+
+
+def can_edit_nutrition_for_date(nutrition_date: str) -> tuple[bool, str]:
+    """Можно ли редактировать питание на указанную дату. Проверка по серверу и настройке времени (обмануть сменой даты у пользователя нельзя).
+    Возвращает (разрешено, сообщение об ошибке)."""
+    try:
+        hour, minute, tz_str = nutrition_cutoff_get()
+    except Exception:
+        hour, minute, tz_str = 8, 0, "Asia/Yekaterinburg"
+    try:
+        tz = ZoneInfo(tz_str)
+    except Exception:
+        tz = ZoneInfo("Asia/Yekaterinburg")
+    now_local = datetime.now(tz)
+    today_str = now_local.strftime("%Y-%m-%d")
+    if nutrition_date > today_str:
+        return True, ""
+    if nutrition_date < today_str:
+        return True, ""
+    cutoff_minutes = hour * 60 + minute
+    current_minutes = now_local.hour * 60 + now_local.minute
+    if current_minutes < cutoff_minutes:
+        return True, ""
+    return False, f"Редактирование питания на сегодня после {hour:02d}:{minute:02d} (по времени школы) запрещено."
 
 
 # --- Ежедневное питание (учитель / столовая) ---

@@ -44,19 +44,19 @@
             </div>
 
             <h3 style="margin-top: 1.25rem;">Привязка к мессенджерам</h3>
-            <p class="hint">Укажите контакты для рассылок и связи. Telegram ID нужен для бота школы (узнать: напишите боту /start).</p>
+            {% include "partials/messenger_link_help.html" %}
+            <p class="hint">Укажите контакты для рассылок и связи.</p>
             <div class="form-row">
                 <label for="telegram_id">Telegram ID</label>
                 <input type="text" id="telegram_id" name="telegram_id" value="{{ user.telegram_id or '' }}" placeholder="Например: 123456789">
-                <p class="hint">Числовой ID. Чтобы привязать аккаунт: откройте бота школы в Telegram и отправьте /start.</p>
             </div>
             <div class="form-row">
                 <label for="whatsapp_contact">WhatsApp</label>
                 <input type="text" id="whatsapp_contact" name="whatsapp_contact" value="{{ user.whatsapp_contact or '' }}" placeholder="+79001234567 или username">
             </div>
             <div class="form-row">
-                <label for="max_contact">МАХ</label>
-                <input type="text" id="max_contact" name="max_contact" value="{{ user.max_contact or '' }}" placeholder="Контакт или ссылка в МАХ">
+                <label for="max_contact">МАХ (VK Мессенджер)</label>
+                <input type="text" id="max_contact" name="max_contact" value="{{ user.max_contact or '' }}" placeholder="Номер телефона, @username или ссылка на профиль">
             </div>
 
             <button type="submit" class="btn btn-primary">Сохранить</button>

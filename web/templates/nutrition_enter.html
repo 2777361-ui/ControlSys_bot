@@ -3,7 +3,12 @@
 {% block content %}
 <h1>Питание на {{ date }}</h1>
 <p><a href="/nutrition">Выбрать другую дату</a></p>
-<form method="post" action="/nutrition/enter">
+{% if not can_edit_nutrition and cutoff_message %}
+<div class="nutrition-cutoff-alert" role="alert">
+  {{ cutoff_message }} Изменения на эту дату сохранить нельзя (проверка на сервере).
+</div>
+{% endif %}
+<form method="post" action="/nutrition/enter"{% if not can_edit_nutrition %} class="nutrition-form-readonly" data-can-edit="false"{% endif %}>
     <input type="hidden" name="date" value="{{ date }}">
     {% if students_grouped and (students_grouped.my_class_students or students_grouped.substitute_classes) %}
     {% if students_grouped.my_class_students %}
@@ -73,6 +78,21 @@
         </tbody>
     </table></div>
     {% endif %}
+    {% if can_edit_nutrition %}
     <button type="submit" class="btn btn-primary">Сохранить</button>
+    {% else %}
+    <p class="hint">Кнопка «Сохранить» недоступна: редактирование на эту дату после дедлайна запрещено.</p>
+    <button type="button" class="btn btn-secondary" disabled>Сохранить</button>
+    {% endif %}
 </form>
+{% if not can_edit_nutrition %}
+<script>
+(function() {
+  var form = document.querySelector('form.nutrition-form-readonly');
+  if (form && form.getAttribute('data-can-edit') === 'false') {
+    form.querySelectorAll('input, button').forEach(function(el) { el.disabled = true; });
+  }
+})();
+</script>
+{% endif %}
 {% endblock %}
