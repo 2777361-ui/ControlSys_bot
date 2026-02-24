@@ -1,0 +1,32 @@
+{% extends "parent_base.html" %}
+{% block title %}Я оплатил наличными — Школьная система{% endblock %}
+{% block content %}
+<h1>Я оплатил наличными</h1>
+<p class="hint">Если вы оплатили в кассу, а платёж ещё не отражён в системе — отправьте сообщение бухгалтерии. Платёж проверят и внесут.</p>
+
+{% if not students %}
+<p>К вам пока не привязаны ученики. Обратитесь в школу.</p>
+{% else %}
+{% if students|length == 1 %}
+<form method="post" action="/parent/i-paid">
+    <input type="hidden" name="student_id" value="{{ students[0].id }}">
+    <p>Ученик: <strong>{{ students[0].full_name }}</strong> — {{ students[0].class_grade|class_grade_display }}</p>
+    <button type="submit" class="btn btn-primary">Отправить сообщение бухгалтерии</button>
+</form>
+{% else %}
+<p>Выберите ученика, по которому вы сообщаете о платеже:</p>
+<ul class="parent-i-paid-list">
+    {% for s in students %}
+    <li>
+        <form method="post" action="/parent/i-paid" style="display: inline;">
+            <input type="hidden" name="student_id" value="{{ s.id }}">
+            <button type="submit" class="btn btn-primary">{{ s.full_name }} — {{ s.class_grade|class_grade_display }}</button>
+        </form>
+    </li>
+    {% endfor %}
+</ul>
+{% endif %}
+{% endif %}
+
+<p style="margin-top: 1.5rem;"><a href="/parent" class="btn btn-secondary">← К моим детям</a></p>
+{% endblock %}

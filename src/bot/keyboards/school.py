@@ -12,7 +12,7 @@ BTN_CANTEEN_BALANCE = "🍽 Баланс столовой"
 BTN_PAYMENTS = "📋 История платежей"
 BTN_EVENTS = "📅 Мероприятия"
 BTN_ADD_PARENT = "➕ Добавить второго родителя"
-BTN_I_PAID = "💳 Я совершил платёж"
+BTN_I_PAID = "💳 Я оплатил (наличными)"
 BTN_PAY = "⭐ Оплатить"
 BTN_BACK = "◀️ Назад"
 

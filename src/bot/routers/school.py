@@ -243,7 +243,7 @@ async def btn_i_paid(message: Message, school_user: dict | None) -> None:
         )
         return
     await message.answer(
-        "Выберите ученика, по которому вы сообщаете о платеже:",
+        "Оплатили наличными в кассу, а платёж ещё не виден в системе? Выберите ученика — бухгалтерия проверит и внесёт платёж.",
         reply_markup=get_student_buttons(students, callback_prefix=CB_I_PAID),
     )
 

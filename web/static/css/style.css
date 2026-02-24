@@ -695,6 +695,25 @@ tr:hover { background: #fafafa; }
 [data-theme="dark"] .nutrition-calendar-weekend {
   background: rgba(244, 67, 54, 0.15);
 }
+
+/* Родитель: план питания на сегодня и на неделю (выходные по календарю директора) */
+.parent-nutrition-today .parent-nutrition-day-row { display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 0.5rem; }
+.parent-nutrition-student-day { padding: 0.5rem; border: 1px solid var(--border); border-radius: var(--radius); }
+.parent-nutrition-student-day label { margin-right: 0.5rem; white-space: nowrap; }
+.parent-nutrition-week-table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+.parent-nutrition-week-table th, .parent-nutrition-week-table td { border: 1px solid var(--border); padding: 0.4rem 0.35rem; vertical-align: top; }
+.parent-nutrition-day-col { text-align: center; min-width: 4rem; }
+.parent-nutrition-day-num { display: block; font-weight: 600; }
+.parent-nutrition-day-weekday { font-size: 0.75rem; opacity: 0.9; }
+.parent-nutrition-day-weekend { background: rgba(244, 67, 54, 0.08); }
+[data-theme="dark"] .parent-nutrition-day-weekend { background: rgba(244, 67, 54, 0.15); }
+.parent-nutrition-day-today { background: rgba(13, 148, 136, 0.12); }
+.parent-nutrition-day-disabled { background: var(--background); }
+.parent-nutrition-week-table td label { display: block; margin: 0.2rem 0; white-space: nowrap; }
+
+/* Родитель: «Я оплатил наличными» — список учеников */
+.parent-i-paid-list { list-style: none; padding: 0; margin: 1rem 0; }
+.parent-i-paid-list li { margin: 0.5rem 0; }
 .nutrition-calendar-checkbox {
   display: inline-flex;
   align-items: center;

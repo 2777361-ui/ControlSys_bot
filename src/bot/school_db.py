@@ -621,6 +621,30 @@ def _init_db_postgres() -> None:
             conn.rollback()
         except Exception:
             pass
+    # План питания по дням (переопределение родителем на конкретную дату)
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'student_daily_meal_plan'"
+        ).fetchone()
+        if not row:
+            conn.execute("""
+                CREATE TABLE student_daily_meal_plan (
+                    student_id     INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+                    plan_date      DATE NOT NULL,
+                    has_breakfast  BOOLEAN NOT NULL DEFAULT true,
+                    has_lunch      BOOLEAN NOT NULL DEFAULT true,
+                    has_dinner     BOOLEAN NOT NULL DEFAULT false,
+                    PRIMARY KEY (student_id, plan_date)
+                )
+            """)
+            conn.commit()
+            logger.info("PostgreSQL: создана таблица student_daily_meal_plan")
+    except Exception as e:
+        logger.warning("PostgreSQL: не удалось создать student_daily_meal_plan: %s", e)
+        try:
+            conn.rollback()
+        except Exception:
+            pass
     conn.commit()
     logger.info("Таблицы PostgreSQL (Supabase) готовы")
 
@@ -934,6 +958,7 @@ def init_db() -> None:
     _migrate_app_settings(conn)
     _migrate_meal_plan_effective_from(conn)
     _migrate_nutrition_calendar(conn)
+    _migrate_student_daily_meal_plan(conn)
     conn.commit()
     logger.info("Таблицы школьной БД готовы")
 
@@ -1222,6 +1247,24 @@ def _migrate_nutrition_calendar(conn: sqlite3.Connection) -> None:
         )
     """)
     logger.info("Миграция: таблица nutrition_calendar")
+
+
+def _migrate_student_daily_meal_plan(conn: sqlite3.Connection) -> None:
+    """Таблица переопределения плана питания по конкретным датам (родитель задаёт на день/неделю)."""
+    cur = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='student_daily_meal_plan'")
+    if cur.fetchone():
+        return
+    conn.execute("""
+        CREATE TABLE student_daily_meal_plan (
+            student_id     INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+            plan_date      TEXT NOT NULL,
+            has_breakfast   INTEGER NOT NULL DEFAULT 1,
+            has_lunch      INTEGER NOT NULL DEFAULT 1,
+            has_dinner     INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (student_id, plan_date)
+        )
+    """)
+    logger.info("Миграция: таблица student_daily_meal_plan")
 
 
 def _migrate_payments_purpose(conn: sqlite3.Connection) -> None:
@@ -3777,6 +3820,125 @@ def parent_meal_plan_remove(user_id: int, effective_from: str = "") -> None:
     conn.commit()
 
 
+# --- План питания по дням (переопределение на конкретную дату) ---
+
+def student_daily_meal_plan_get(student_id: int, plan_date: str) -> dict[str, Any] | None:
+    """План питания ученика на конкретную дату (переопределение)."""
+    conn = get_connection()
+    if is_postgres():
+        row = conn.execute(
+            "SELECT student_id, plan_date::text, has_breakfast, has_lunch, has_dinner FROM student_daily_meal_plan WHERE student_id = %s AND plan_date = %s",
+            (student_id, plan_date),
+        ).fetchone()
+    else:
+        row = conn.execute(
+            "SELECT student_id, plan_date, has_breakfast, has_lunch, has_dinner FROM student_daily_meal_plan WHERE student_id = ? AND plan_date = ?",
+            (student_id, plan_date),
+        ).fetchone()
+    if not row:
+        return None
+    return {
+        "student_id": row[0],
+        "plan_date": str(row[1]),
+        "has_breakfast": bool(row[2]),
+        "has_lunch": bool(row[3]),
+        "has_dinner": bool(row[4]),
+    }
+
+
+def student_daily_meal_plan_set(
+    student_id: int,
+    plan_date: str,
+    has_breakfast: bool = True,
+    has_lunch: bool = True,
+    has_dinner: bool = False,
+) -> None:
+    """Сохранить переопределение плана питания на дату. Если все приёмы выключены — удалить запись."""
+    conn = get_connection()
+    if is_postgres():
+        if not has_breakfast and not has_lunch and not has_dinner:
+            conn.execute("DELETE FROM student_daily_meal_plan WHERE student_id = %s AND plan_date = %s", (student_id, plan_date))
+        else:
+            conn.execute(
+                """
+                INSERT INTO student_daily_meal_plan (student_id, plan_date, has_breakfast, has_lunch, has_dinner)
+                VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT (student_id, plan_date) DO UPDATE SET
+                    has_breakfast = EXCLUDED.has_breakfast,
+                    has_lunch = EXCLUDED.has_lunch,
+                    has_dinner = EXCLUDED.has_dinner
+                """,
+                (student_id, plan_date, has_breakfast, has_lunch, has_dinner),
+            )
+    else:
+        if not has_breakfast and not has_lunch and not has_dinner:
+            conn.execute("DELETE FROM student_daily_meal_plan WHERE student_id = ? AND plan_date = ?", (student_id, plan_date))
+        else:
+            conn.execute(
+                """
+                INSERT INTO student_daily_meal_plan (student_id, plan_date, has_breakfast, has_lunch, has_dinner)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(student_id, plan_date) DO UPDATE SET
+                    has_breakfast = excluded.has_breakfast,
+                    has_lunch = excluded.has_lunch,
+                    has_dinner = excluded.has_dinner
+                """,
+                (student_id, plan_date, 1 if has_breakfast else 0, 1 if has_lunch else 0, 1 if has_dinner else 0),
+            )
+    conn.commit()
+
+
+def student_daily_meal_plan_get_for_students_dates(
+    student_ids: list[int], date_list: list[str]
+) -> dict[tuple[int, str], dict[str, Any]]:
+    """План по дням для списка учеников и дат. Ключ — (student_id, plan_date)."""
+    if not student_ids or not date_list:
+        return {}
+    conn = get_connection()
+    result = {}
+    if is_postgres():
+        place_st = ",".join("%s" for _ in student_ids)
+        place_dt = ",".join("%s" for _ in date_list)
+        rows = conn.execute(
+            f"""
+            SELECT student_id, plan_date::text, has_breakfast, has_lunch, has_dinner
+            FROM student_daily_meal_plan
+            WHERE student_id IN ({place_st}) AND plan_date IN ({place_dt})
+            """,
+            tuple(student_ids) + tuple(date_list),
+        ).fetchall()
+    else:
+        place_st = ",".join("?" for _ in student_ids)
+        place_dt = ",".join("?" for _ in date_list)
+        rows = conn.execute(
+            f"""
+            SELECT student_id, plan_date, has_breakfast, has_lunch, has_dinner
+            FROM student_daily_meal_plan
+            WHERE student_id IN ({place_st}) AND plan_date IN ({place_dt})
+            """,
+            tuple(student_ids) + tuple(date_list),
+        ).fetchall()
+    for r in rows:
+        key = (int(r[0]), str(r[1]))
+        result[key] = {
+            "has_breakfast": bool(r[2]),
+            "has_lunch": bool(r[3]),
+            "has_dinner": bool(r[4]),
+        }
+    return result
+
+
+def student_meal_plan_for_date(student_id: int, target_date: str) -> tuple[bool, bool, bool]:
+    """План питания ученика на дату: сначала переопределение на день (student_daily_meal_plan), иначе общий план (student_meal_plan). Возвращает (has_breakfast, has_lunch, has_dinner)."""
+    daily = student_daily_meal_plan_get(student_id, target_date)
+    if daily is not None:
+        return (daily["has_breakfast"], daily["has_lunch"], daily["has_dinner"])
+    plan = student_meal_plan_get(student_id)
+    if plan is None:
+        return (True, True, False)  # по умолчанию завтрак+обед
+    return (plan["has_breakfast"], plan["has_lunch"], plan["has_dinner"])
+
+
 # --- Списания за питание ---
 
 def nutrition_deduction_create(
@@ -3863,23 +4025,27 @@ def nutrition_deductions_for_student_charge_to(
 
 def canteen_view_for_date(target_date: str) -> dict[str, Any]:
     """По дате: список учеников по классам с планом (завтрак/обед/ужин) и список родителей на питании.
-    Используется план, действующий на target_date (effective_from <= target_date, последний по дате)."""
+    Используется план на дату: переопределение на день (student_daily_meal_plan) или общий план (student_meal_plan)."""
     _ensure_students_archived_column_pg()
     conn = get_connection()
     where_archived = _archived_condition(False, "s")
     students_rows = conn.execute(
         f"""
-        SELECT s.id, s.full_name, s.class_grade,
-               COALESCE((SELECT smp.has_breakfast FROM student_meal_plan smp WHERE smp.student_id = s.id AND smp.effective_from <= ? ORDER BY smp.effective_from DESC LIMIT 1), 1) AS has_breakfast,
-               COALESCE((SELECT smp.has_lunch FROM student_meal_plan smp WHERE smp.student_id = s.id AND smp.effective_from <= ? ORDER BY smp.effective_from DESC LIMIT 1), 1) AS has_lunch,
-               COALESCE((SELECT smp.has_dinner FROM student_meal_plan smp WHERE smp.student_id = s.id AND smp.effective_from <= ? ORDER BY smp.effective_from DESC LIMIT 1), 0) AS has_dinner
+        SELECT s.id, s.full_name, s.class_grade
         FROM students s
         WHERE {where_archived}
         ORDER BY s.class_grade, s.full_name
         """,
-        (target_date, target_date, target_date),
+        (),
     ).fetchall()
-    students = [dict(r) for r in students_rows]
+    students = []
+    for r in students_rows:
+        row = dict(r)
+        b, l, d = student_meal_plan_for_date(int(row["id"]), target_date)
+        row["has_breakfast"] = b
+        row["has_lunch"] = l
+        row["has_dinner"] = d
+        students.append(row)
     by_class: dict[str, list[dict]] = {}
     counts_students = {"breakfast": 0, "lunch": 0, "dinner": 0}
     by_class_counts: dict[str, dict[str, int]] = {}
@@ -4039,22 +4205,33 @@ def nutrition_calendar_get_range(date_from: str, date_to: str) -> list[dict]:
     return [{"date": str(r[0]), "skip_charge": bool(r[1])} for r in rows]
 
 
+def is_weekend_or_holiday(date_str: str) -> bool:
+    """Является ли дата выходным для отображения: по календарю директора (nutrition_calendar) или по умолчанию сб/вс."""
+    wd = _parse_date_weekday(date_str)
+    if wd is None:
+        return False
+    override = nutrition_calendar_get(date_str)
+    if override is not None:
+        return override  # skip_charge = True значит выходной (не списываем)
+    return wd >= 5  # по умолчанию сб/вс — выходные
+
+
 def process_nutrition_deductions_for_date(target_date: str) -> int:
-    """Создать списания за дату по плану, действующему на эту дату (effective_from <= target_date), и текущим ценам."""
+    """Создать списания за дату по плану на эту дату (переопределение на день или общий план), и текущим ценам."""
     if not should_charge_nutrition_for_date(target_date):
         return 0
     prices = meal_prices_get_all()
     conn = get_connection()
     created = 0
-    students_plan_sql = """
-        SELECT s.id,
-               COALESCE((SELECT smp.has_breakfast FROM student_meal_plan smp WHERE smp.student_id = s.id AND smp.effective_from <= ? ORDER BY smp.effective_from DESC LIMIT 1), 1),
-               COALESCE((SELECT smp.has_lunch FROM student_meal_plan smp WHERE smp.student_id = s.id AND smp.effective_from <= ? ORDER BY smp.effective_from DESC LIMIT 1), 1),
-               COALESCE((SELECT smp.has_dinner FROM student_meal_plan smp WHERE smp.student_id = s.id AND smp.effective_from <= ? ORDER BY smp.effective_from DESC LIMIT 1), 0)
-        FROM students s
-    """
-    for row in conn.execute(students_plan_sql, (target_date, target_date, target_date)).fetchall():
-        student_id, b, l, d = row[0], bool(row[1]), bool(row[2]), bool(row[3])
+    _ensure_students_archived_column_pg()
+    where_archived = _archived_condition(False, "s")
+    students_rows = conn.execute(
+        f"SELECT s.id FROM students s WHERE {where_archived}",
+        (),
+    ).fetchall()
+    for row in students_rows:
+        student_id = row[0]
+        b, l, d = student_meal_plan_for_date(student_id, target_date)
         amt_b = prices.get("breakfast", 0) if b else 0
         amt_l = prices.get("lunch", 0) if l else 0
         amt_d = prices.get("dinner", 0) if d else 0

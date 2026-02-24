@@ -10,8 +10,11 @@
 {% if show_welcome %}
 <p class="success" style="margin-bottom: 1rem;">Регистрация прошла успешно. Добро пожаловать в личный кабинет!</p>
 {% endif %}
+{% if request.query_params.get("i_paid") == "1" %}
+<p class="success" style="margin-bottom: 1rem;">Сообщение передано бухгалтерии. Платёж проверят и внесут в систему.</p>
+{% endif %}
 <h1>Добро пожаловать, {{ user.full_name or "Родитель" }}</h1>
-<p class="hint">Здесь отображаются ваши дети, сквозной баланс (все пополнения минус все списания: питание, обучение, расходники, продленка и т.д.) и последние платежи/списания. <a href="/parent/nutrition">План питания</a> — по умолчанию завтрак/обед/ужин. <a href="/parent/nutrition-report">Отчёт по питанию за месяц</a>.</p>
+<p class="hint">Здесь отображаются ваши дети, сквозной баланс (все пополнения минус все списания: питание, обучение, расходники, продленка и т.д.) и последние платежи/списания. Если вы <strong>оплатили наличными в кассу</strong>, а платёж ещё не виден — <a href="/parent/i-paid">сообщите бухгалтерии</a>. <a href="/parent/nutrition">План питания</a> — по умолчанию завтрак/обед/ужин. <a href="/parent/nutrition-report">Отчёт по питанию за месяц</a>.</p>
 
 {% if purposes_with_prices or meal_prices %}
 <section class="prices-block" style="margin-bottom: 1.5rem;">

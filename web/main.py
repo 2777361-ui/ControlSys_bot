@@ -454,6 +454,37 @@ async def parent_invite_create(
     )
 
 
+@app.get("/parent/i-paid", response_class=HTMLResponse)
+async def parent_i_paid_page(request: Request, user_id: int = Depends(require_parent)):
+    """Страница «Я оплатил наличными»: родитель сообщает бухгалтерии, что платёж в кассу ещё не внесён."""
+    user = school_db.user_by_id(user_id)
+    students = school_db.students_by_parent_id(user_id)
+    return templates.TemplateResponse(
+        "parent_i_paid.html",
+        {"request": request, "user": user, "students": students},
+    )
+
+
+@app.post("/parent/i-paid", response_class=HTMLResponse)
+async def parent_i_paid_submit(
+    request: Request,
+    user_id: int = Depends(require_parent),
+    student_id: int = Form(...),
+):
+    """Создать заявку «родитель оплатил в кассу» для проверки бухгалтерией."""
+    if not school_db.student_parent_can_manage(student_id, user_id):
+        raise HTTPException(status_code=403, detail="Нет доступа к этому ученику")
+    school_db.parent_report_payment_create(user_id, student_id)
+    audit_log(
+        _web_logger,
+        "parent_i_paid_web",
+        user_id=user_id,
+        role="parent",
+        extra={"student_id": student_id},
+    )
+    return RedirectResponse(url="/parent?i_paid=1", status_code=302)
+
+
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
     """Страница входа по email и паролю."""
@@ -2539,7 +2570,7 @@ async def nutrition_index(request: Request, user_id: int = Depends(require_teach
     date_buttons_forward_w = [_date_with_weekday(d) for d in date_buttons_forward]
     today_weekday = weekdays_ru[date_type.fromisoformat(today_iso).weekday()]
     all_button_dates = date_buttons_back + [today_iso] + date_buttons_forward
-    weekend_dates = {d for d in all_button_dates if date_type.fromisoformat(d).weekday() >= 5}
+    weekend_dates = {d for d in all_button_dates if school_db.is_weekend_or_holiday(d)}
     return templates.TemplateResponse(
         "nutrition_index.html",
         {
@@ -2593,7 +2624,7 @@ async def nutrition_canteen_view(
     date_buttons_forward_w = [_date_with_weekday(d) for d in date_buttons_forward]
     current_weekday = weekdays_ru[current.weekday()]
     all_button_dates = date_buttons_back + [date] + date_buttons_forward
-    weekend_dates = {d for d in all_button_dates if date_type.fromisoformat(d).weekday() >= 5}
+    weekend_dates = {d for d in all_button_dates if school_db.is_weekend_or_holiday(d)}
     from datetime import datetime
     from zoneinfo import ZoneInfo
     _, _, tz_str = school_db.nutrition_cutoff_get()
@@ -2791,8 +2822,8 @@ async def nutrition_deduction_add_submit(
 
 @app.get("/parent/nutrition", response_class=HTMLResponse)
 async def parent_nutrition_page(request: Request, user_id: int = Depends(require_parent)):
-    """План питания по умолчанию: завтрак/обед/ужин для каждого ребёнка и возможность встать на питание самому."""
-    from datetime import datetime
+    """План питания: общий план, на сегодня и на неделю вперёд по дням (даты с выделением выходных из календаря директора)."""
+    from datetime import date as date_type, datetime, timedelta
     from zoneinfo import ZoneInfo
     user = school_db.user_by_id(user_id)
     students = school_db.students_by_parent_id(user_id)
@@ -2807,6 +2838,21 @@ async def parent_nutrition_page(request: Request, user_id: int = Depends(require
         tz = ZoneInfo("Asia/Yekaterinburg")
     today_iso = datetime.now(tz).strftime("%Y-%m-%d")
     can_edit_today, cutoff_message = school_db.can_edit_nutrition_for_date(today_iso)
+    weekdays_ru = ("Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс")
+    # Дни: сегодня + 7 дней вперёд (для блока «на неделю»)
+    days = []
+    for i in range(8):
+        d = date_type.fromisoformat(today_iso) + timedelta(days=i)
+        date_str = d.isoformat()
+        days.append({
+            "date": date_str,
+            "weekday": weekdays_ru[d.weekday()],
+            "is_weekend": school_db.is_weekend_or_holiday(date_str),
+            "is_today": i == 0,
+        })
+    student_ids = [s["id"] for s in students]
+    date_list = [day["date"] for day in days]
+    daily_plans = school_db.student_daily_meal_plan_get_for_students_dates(student_ids, date_list)
     return templates.TemplateResponse(
         "parent_nutrition.html",
         {
@@ -2817,6 +2863,9 @@ async def parent_nutrition_page(request: Request, user_id: int = Depends(require
             "parent_plan": parent_plan,
             "can_edit_today": can_edit_today,
             "cutoff_message": cutoff_message or "",
+            "days": days,
+            "today_iso": today_iso,
+            "daily_plans": daily_plans,
         },
     )
 
@@ -2826,11 +2875,10 @@ async def parent_nutrition_submit(
     request: Request,
     user_id: int = Depends(require_parent),
 ):
-    """Сохранить планы питания (дети + сам родитель). После 8:00 по времени школы правки действуют только с завтрашнего дня."""
+    """Сохранить планы питания: общий план, переопределения на сегодня и на неделю вперёд."""
     from datetime import date as date_type, datetime, timedelta
     from zoneinfo import ZoneInfo
     form = await request.form()
-    # «Сегодня» и дедлайн — по времени школы (обмануть сменой даты у пользователя нельзя)
     _, _, tz_str = school_db.nutrition_cutoff_get()
     try:
         tz = ZoneInfo(tz_str)
@@ -2838,8 +2886,9 @@ async def parent_nutrition_submit(
         tz = ZoneInfo("Asia/Yekaterinburg")
     today_iso = datetime.now(tz).strftime("%Y-%m-%d")
     can_edit_today, _ = school_db.can_edit_nutrition_for_date(today_iso)
-    effective_from = today_iso if can_edit_today else (date_type.today() + timedelta(days=1)).isoformat()
+    effective_from = today_iso if can_edit_today else (date_type.fromisoformat(today_iso) + timedelta(days=1)).isoformat()
     students = school_db.students_by_parent_id(user_id)
+    # Общий план (действует с effective_from)
     for s in students:
         sid = str(s["id"])
         school_db.student_meal_plan_set(
@@ -2849,6 +2898,24 @@ async def parent_nutrition_submit(
             has_dinner=form.get(f"child_{sid}_dinner") == "on",
             effective_from=effective_from,
         )
+    # Переопределения по дням: сегодня (если можно) + 7 дней вперёд
+    for i in range(8):
+        d = date_type.fromisoformat(today_iso) + timedelta(days=i)
+        date_str = d.isoformat()
+        if i == 0 and not can_edit_today:
+            continue
+        for s in students:
+            sid = str(s["id"])
+            key_set = f"child_{sid}_day_{date_str}_set"
+            if key_set not in form:
+                continue
+            school_db.student_daily_meal_plan_set(
+                s["id"],
+                plan_date=date_str,
+                has_breakfast=form.get(f"child_{sid}_day_{date_str}_breakfast") == "on",
+                has_lunch=form.get(f"child_{sid}_day_{date_str}_lunch") == "on",
+                has_dinner=form.get(f"child_{sid}_day_{date_str}_dinner") == "on",
+            )
     if form.get("parent_on_nutrition") == "on":
         school_db.parent_meal_plan_set(
             user_id,

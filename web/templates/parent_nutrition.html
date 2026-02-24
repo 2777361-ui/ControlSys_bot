@@ -2,26 +2,91 @@
 {% block title %}План питания — Школьная система{% endblock %}
 {% block content %}
 <h1>План питания</h1>
-<p class="hint">Настройте по умолчанию, на каких приёмах пищи стоит каждый ребёнок (завтрак, обед, ужин). Так вы не забываете снимать ребёнка, если он не ходит на ужин. Эти данные идут в столовую. Можно также встать на питание самому.</p>
+<p class="hint">Ниже: <strong>общий план</strong> (по умолчанию для ребёнка), <strong>на сегодня</strong> и <strong>на неделю вперёд</strong> по дням. Выходные подсвечены по календарю директора. Данные идут в столовую. Можно также встать на питание самому.</p>
 {% if not can_edit_today and cutoff_message %}
 <div class="nutrition-cutoff-alert" role="alert">
-  {{ cutoff_message }} Изменения плана будут действовать только с завтрашнего дня; сегодня и прошедшие дни изменить нельзя.
+  {{ cutoff_message }} Изменения плана будут действовать только с завтрашнего дня; сегодня изменить нельзя.
 </div>
 {% endif %}
 {% if request.query_params.get("ok") %}<p class="success">План сохранён.</p>{% endif %}
 
 <form method="post" action="/parent/nutrition">
-    {% for s in students %}
     <section class="student-block">
-        <h2>{{ s.full_name }} — {{ s.class_grade|class_grade_display }}</h2>
-        {% set plan = plans.get(s.id) %}
-        <p>
+        <h2>Общий план (по умолчанию)</h2>
+        <p class="hint">Используется для всех дней, где нет переопределения ниже.</p>
+        {% for s in students %}
+        <p style="margin-bottom: 0.75rem;">
+            <strong>{{ s.full_name }}</strong> — {{ s.class_grade|class_grade_display }}:
+            {% set plan = plans.get(s.id) %}
             <label><input type="checkbox" name="child_{{ s.id }}_breakfast" {% if not plan or plan.has_breakfast %}checked{% endif %}> Завтрак</label>
             <label><input type="checkbox" name="child_{{ s.id }}_lunch" {% if not plan or plan.has_lunch %}checked{% endif %}> Обед</label>
             <label><input type="checkbox" name="child_{{ s.id }}_dinner" {% if plan and plan.has_dinner %}checked{% endif %}> Ужин</label>
         </p>
+        {% endfor %}
     </section>
-    {% endfor %}
+
+    {% if days and can_edit_today %}
+    <section class="student-block parent-nutrition-today">
+        <h2>На сегодня</h2>
+        <p class="hint">Переопределение на сегодня ({{ today_iso[8:10] }}.{{ today_iso[5:7] }} — {{ days[0].weekday }}).</p>
+        <div class="parent-nutrition-day-row">
+            {% for s in students %}
+            <div class="parent-nutrition-student-day">
+                <strong>{{ s.full_name }}</strong>
+                {% set dp = daily_plans.get((s.id, today_iso)) %}
+                {% set plan = plans.get(s.id) %}
+                <label><input type="checkbox" name="child_{{ s.id }}_day_{{ today_iso }}_breakfast" {% if dp %}{% if dp.has_breakfast %}checked{% endif %}{% else %}{% if not plan or plan.has_breakfast %}checked{% endif %}{% endif %}> З</label>
+                <label><input type="checkbox" name="child_{{ s.id }}_day_{{ today_iso }}_lunch" {% if dp %}{% if dp.has_lunch %}checked{% endif %}{% else %}{% if not plan or plan.has_lunch %}checked{% endif %}{% endif %}> О</label>
+                <label><input type="checkbox" name="child_{{ s.id }}_day_{{ today_iso }}_dinner" {% if dp %}{% if dp.has_dinner %}checked{% endif %}{% else %}{% if plan and plan.has_dinner %}checked{% endif %}{% endif %}> У</label>
+                <input type="hidden" name="child_{{ s.id }}_day_{{ today_iso }}_set" value="1">
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+
+    {% if days %}
+    <section class="student-block parent-nutrition-week">
+        <h2>На неделю вперёд (по дням)</h2>
+        <p class="hint">Переопределение по каждому дню. Выходные — по календарю директора.</p>
+        <div class="table-wrap">
+            <table class="parent-nutrition-week-table">
+                <thead>
+                    <tr>
+                        <th>Ребёнок</th>
+                        {% for day in days %}
+                        <th class="parent-nutrition-day-col {% if day.is_weekend %}parent-nutrition-day-weekend{% endif %} {% if day.is_today %}parent-nutrition-day-today{% endif %}">
+                            <span class="parent-nutrition-day-num">{{ day.date[8:10] }}.{{ day.date[5:7] }}</span>
+                            <span class="parent-nutrition-day-weekday">{{ day.weekday }}</span>
+                        </th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for s in students %}
+                    <tr>
+                        <td><strong>{{ s.full_name }}</strong><br><span class="hint">{{ s.class_grade|class_grade_display }}</span></td>
+                        {% for day in days %}
+                        <td class="{% if day.is_weekend %}parent-nutrition-day-weekend{% endif %} {% if day.is_today and not can_edit_today %}parent-nutrition-day-disabled{% endif %}">
+                            {% if day.is_today and not can_edit_today %}
+                            <span class="hint">—</span>
+                            {% else %}
+                            {% set dp = daily_plans.get((s.id, day.date)) %}
+                            {% set plan = plans.get(s.id) %}
+                            <label><input type="checkbox" name="child_{{ s.id }}_day_{{ day.date }}_breakfast" {% if dp %}{% if dp.has_breakfast %}checked{% endif %}{% else %}{% if not plan or plan.has_breakfast %}checked{% endif %}{% endif %}> З</label>
+                            <label><input type="checkbox" name="child_{{ s.id }}_day_{{ day.date }}_lunch" {% if dp %}{% if dp.has_lunch %}checked{% endif %}{% else %}{% if not plan or plan.has_lunch %}checked{% endif %}{% endif %}> О</label>
+                            <label><input type="checkbox" name="child_{{ s.id }}_day_{{ day.date }}_dinner" {% if dp %}{% if dp.has_dinner %}checked{% endif %}{% else %}{% if plan and plan.has_dinner %}checked{% endif %}{% endif %}> У</label>
+                            <input type="hidden" name="child_{{ s.id }}_day_{{ day.date }}_set" value="1">
+                            {% endif %}
+                        </td>
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+    {% endif %}
 
     <section class="student-block">
         <h2>Я на питании</h2>
