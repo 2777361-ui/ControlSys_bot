@@ -528,6 +528,30 @@ tr:hover { background: #fafafa; }
   background: #0d9488 !important;
   border-color: #0d9488 !important;
 }
+/* Суббота и воскресенье — мягкий красный (не перекрывает «сегодня») */
+.canteen-date-weekend:not(.canteen-date-today) {
+  background: #ffebee !important;
+  border-color: #ef9a9a !important;
+  color: #b71c1c;
+}
+.canteen-date-weekend:not(.canteen-date-today):hover {
+  background: #ffcdd2 !important;
+  border-color: #e57373 !important;
+  color: #b71c1c !important;
+}
+[data-theme="dark"] .canteen-date-weekend:not(.canteen-date-today) {
+  background: rgba(244, 67, 54, 0.2) !important;
+  border-color: #e57373 !important;
+  color: #ef9a9a;
+}
+[data-theme="dark"] .canteen-date-weekend:not(.canteen-date-today):hover {
+  background: rgba(244, 67, 54, 0.35) !important;
+  border-color: #ef5350 !important;
+}
+/* Строка «от / до» с новой строки после «Свой диапазон» */
+.canteen-date-range-row { display: block; margin-top: 0.35rem; }
+.canteen-date-range-row label { margin: 0; font-weight: 500; }
+.canteen-date-range-row input[type="date"] { margin: 0 0.5rem 0 0.25rem; }
 .canteen-date-range-form { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.75rem; }
 .canteen-date-range-form label { margin: 0; font-weight: 500; }
 .canteen-date-range-label { margin-right: 0.25rem; font-weight: 500; }
@@ -568,6 +592,36 @@ tr:hover { background: #fafafa; }
   background: rgba(255, 152, 0, 0.15);
   border-color: #ff9800;
   color: #ffb74d;
+}
+
+/* Календарь питания: таблица и подсветка выходных */
+.nutrition-calendar-table {
+  width: 100%;
+  max-width: 420px;
+  border-collapse: collapse;
+  margin-top: 0.5rem;
+}
+.nutrition-calendar-table th,
+.nutrition-calendar-table td {
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  border: 1px solid var(--border-color, #dee2e6);
+}
+.nutrition-calendar-table thead th {
+  background: var(--surface-alt, #f5f5f5);
+  font-weight: 600;
+}
+.nutrition-calendar-weekend {
+  background: rgba(244, 67, 54, 0.08);
+}
+[data-theme="dark"] .nutrition-calendar-weekend {
+  background: rgba(244, 67, 54, 0.15);
+}
+.nutrition-calendar-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  cursor: pointer;
 }
 
 .parent-debt-banner-icon {

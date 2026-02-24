@@ -244,6 +244,17 @@ def require_teacher_or_canteen(request: Request):
     return uid
 
 
+def require_nutrition_calendar(request: Request):
+    """Доступ к календарю питания (списывать/не списывать по дням): директор, бухгалтер, столовая, администратор."""
+    uid = get_current_user_id(request)
+    if not uid:
+        _redirect_302("/login")
+    user = school_db.user_by_id(uid)
+    if not user or user.get("role") not in ("director", "accountant", "canteen", "administrator"):
+        raise HTTPException(status_code=403, detail="Доступ только для директора, бухгалтера или столовой")
+    return uid
+
+
 def require_director(request: Request):
     """Директор или администратор — для отчётов, отделов и прочих прав директора."""
     uid = get_current_user_id(request)
@@ -2093,6 +2104,7 @@ async def nutrition_index(request: Request, user_id: int = Depends(require_teach
     user = school_db.user_by_id(user_id)
     is_staff = user and user.get("role") in ("administrator", "director", "accountant")
     can_edit_nutrition_settings = user and user.get("role") in ("administrator", "director")
+    can_edit_calendar = user and user.get("role") in ("director", "accountant", "canteen", "administrator")
     today = date_type.today()
     _, _, tz_str = school_db.nutrition_cutoff_get()
     try:
@@ -2100,17 +2112,22 @@ async def nutrition_index(request: Request, user_id: int = Depends(require_teach
     except Exception:
         tz = ZoneInfo("Asia/Yekaterinburg")
     today_iso = datetime.now(tz).strftime("%Y-%m-%d")
-    date_buttons_back = [(today - timedelta(days=k)).isoformat() for k in range(5, 0, -1)]
+    # 3 даты назад, 5 вперёд (суббота/воскресенье помечаем для подсветки)
+    date_buttons_back = [(today - timedelta(days=k)).isoformat() for k in range(3, 0, -1)]
     date_buttons_forward = [(today + timedelta(days=k)).isoformat() for k in range(1, 6)]
+    all_button_dates = date_buttons_back + [today_iso] + date_buttons_forward
+    weekend_dates = {d for d in all_button_dates if date_type.fromisoformat(d).weekday() >= 5}
     return templates.TemplateResponse(
         "nutrition_index.html",
         {
             "request": request,
             "is_staff": is_staff,
             "can_edit_nutrition_settings": can_edit_nutrition_settings,
+            "can_edit_calendar": can_edit_calendar,
             "today_iso": today_iso,
             "date_buttons_back": date_buttons_back,
             "date_buttons_forward": date_buttons_forward,
+            "weekend_dates": weekend_dates,
         },
     )
 
@@ -2138,8 +2155,10 @@ async def nutrition_canteen_view(
     data = school_db.canteen_view_for_date(date)
     prices = school_db.meal_prices_get_all()
     current = date_type.fromisoformat(date)
-    date_buttons_back = [(current - timedelta(days=k)).isoformat() for k in range(5, 0, -1)]
+    date_buttons_back = [(current - timedelta(days=k)).isoformat() for k in range(3, 0, -1)]
     date_buttons_forward = [(current + timedelta(days=k)).isoformat() for k in range(1, 6)]
+    all_button_dates = date_buttons_back + [date] + date_buttons_forward
+    weekend_dates = {d for d in all_button_dates if date_type.fromisoformat(d).weekday() >= 5}
     from datetime import datetime
     from zoneinfo import ZoneInfo
     _, _, tz_str = school_db.nutrition_cutoff_get()
@@ -2172,8 +2191,69 @@ async def nutrition_canteen_view(
             "date_from_param": date_from or "",
             "date_to_param": date_to or "",
             "today_iso": today_iso,
+            "weekend_dates": weekend_dates,
         },
     )
+
+
+@app.get("/nutrition/calendar", response_class=HTMLResponse)
+async def nutrition_calendar_page(
+    request: Request,
+    user_id: int = Depends(require_nutrition_calendar),
+):
+    """Календарь питания: на месяц вперёд указать, в какие дни списывать питание (по умолчанию сб/вс не списываются)."""
+    from datetime import date as date_type, timedelta
+    today = date_type.today()
+    date_to = today + timedelta(days=30)
+    date_from_str = today.isoformat()
+    date_to_str = date_to.isoformat()
+    overrides = {r["date"]: r["skip_charge"] for r in school_db.nutrition_calendar_get_range(date_from_str, date_to_str)}
+    weekdays_ru = ("Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс")
+    days = []
+    d = today
+    while d <= date_to:
+        date_str = d.isoformat()
+        wd = d.weekday()  # 0=Mon, 6=Sun
+        is_weekend = wd >= 5
+        if date_str in overrides:
+            charge = not overrides[date_str]
+        else:
+            charge = not is_weekend  # по умолчанию списываем только в пн–пт
+        days.append({
+            "date": date_str,
+            "weekday": weekdays_ru[wd],
+            "is_weekend": is_weekend,
+            "charge": charge,
+        })
+        d += timedelta(days=1)
+    return templates.TemplateResponse(
+        "nutrition_calendar.html",
+        {
+            "request": request,
+            "days": days,
+            "date_from": date_from_str,
+            "date_to": date_to_str,
+        },
+    )
+
+
+@app.post("/nutrition/calendar")
+async def nutrition_calendar_submit(
+    request: Request,
+    user_id: int = Depends(require_nutrition_calendar),
+):
+    """Сохранить настройки «списывать / не списывать» по дням (чекбокс = списывать)."""
+    from datetime import date as date_type, timedelta
+    form = await request.form()
+    charge_dates = set(form.getlist("charge"))  # даты, в которые списывать
+    today = date_type.today()
+    date_to = today + timedelta(days=30)
+    d = today
+    while d <= date_to:
+        date_str = d.isoformat()
+        school_db.nutrition_calendar_set(date_str, skip_charge=(date_str not in charge_dates))
+        d += timedelta(days=1)
+    return RedirectResponse(url="/nutrition/calendar?ok=1", status_code=302)
 
 
 @app.get("/nutrition/settings", response_class=HTMLResponse)

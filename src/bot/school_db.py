@@ -566,6 +566,26 @@ def _init_db_postgres() -> None:
             conn.rollback()
         except Exception:
             pass
+    # Календарь питания: в какие дни списывать (по умолчанию сб/вс — не списывать; переопределения здесь)
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'nutrition_calendar'"
+        ).fetchone()
+        if not row:
+            conn.execute("""
+                CREATE TABLE nutrition_calendar (
+                    the_date     DATE PRIMARY KEY,
+                    skip_charge  BOOLEAN NOT NULL
+                )
+            """)
+            conn.commit()
+            logger.info("PostgreSQL: создана таблица nutrition_calendar")
+    except Exception as e:
+        logger.warning("PostgreSQL: не удалось создать nutrition_calendar: %s", e)
+        try:
+            conn.rollback()
+        except Exception:
+            pass
     conn.commit()
     logger.info("Таблицы PostgreSQL (Supabase) готовы")
 
@@ -876,6 +896,7 @@ def init_db() -> None:
     _migrate_broadcast_scheduled_at(conn)
     _migrate_app_settings(conn)
     _migrate_meal_plan_effective_from(conn)
+    _migrate_nutrition_calendar(conn)
     conn.commit()
     logger.info("Таблицы школьной БД готовы")
 
@@ -1119,6 +1140,20 @@ def _migrate_meal_plan_effective_from(conn: sqlite3.Connection) -> None:
         """)
         conn.execute("DROP TABLE parent_meal_plan_old")
         logger.info("Миграция: parent_meal_plan.effective_from")
+
+
+def _migrate_nutrition_calendar(conn: sqlite3.Connection) -> None:
+    """Календарь питания: в какие дни списывать (по умолчанию сб/вс не списывать; переопределения в таблице)."""
+    cur = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='nutrition_calendar'")
+    if cur.fetchone():
+        return
+    conn.execute("""
+        CREATE TABLE nutrition_calendar (
+            the_date     TEXT PRIMARY KEY,
+            skip_charge  INTEGER NOT NULL
+        )
+    """)
+    logger.info("Миграция: таблица nutrition_calendar")
 
 
 def _migrate_payments_purpose(conn: sqlite3.Connection) -> None:
@@ -2264,13 +2299,16 @@ def student_by_id(student_id: int) -> dict[str, Any] | None:
 
 
 def _archived_condition(include_archived: bool, table_alias: str = "s") -> str:
-    """SQL: активные (не в архиве) или все. Для PostgreSQL и SQLite (archived 0/1 или NULL).
-    Если в PG колонки archived ещё нет (ALTER не выполнился из-за таймаута), возвращаем 1=1, чтобы запрос не падал."""
+    """SQL: активные (не в архиве) или все.
+    В PostgreSQL колонка archived — BOOLEAN (сравниваем с FALSE). В SQLite — 0/1.
+    Если в PG колонки archived ещё нет (ALTER не выполнился), возвращаем 1=1."""
     if include_archived:
         return "1=1"
     if is_postgres() and not _pg_students_has_archived_column():
         return "1=1"
     prefix = f"{table_alias}." if table_alias else ""
+    if is_postgres():
+        return f"({prefix}archived IS NOT TRUE)"
     return f"({prefix}archived = 0 OR {prefix}archived IS NULL)"
 
 
@@ -3597,8 +3635,100 @@ def canteen_view_for_date(target_date: str) -> dict[str, Any]:
 
 # --- Начисление списаний за дату (по планам и ценам) — вызывать ежедневно ---
 
+def _parse_date_weekday(date_str: str) -> int | None:
+    """День недели для даты YYYY-MM-DD: 0=пн, 6=вс. None если дата невалидна."""
+    try:
+        y, m, d = int(date_str[:4]), int(date_str[5:7]), int(date_str[8:10])
+        return datetime(y, m, d).weekday()  # 0=Mon, 6=Sun
+    except (ValueError, IndexError):
+        return None
+
+
+def should_charge_nutrition_for_date(date_str: str) -> bool:
+    """
+    Нужно ли списывать питание за эту дату.
+    По умолчанию: не списываем в субботу (5) и воскресенье (6).
+    Если в nutrition_calendar есть запись — используем её (skip_charge = не списывать).
+    """
+    wd = _parse_date_weekday(date_str)
+    if wd is None:
+        return False
+    conn = get_connection()
+    if is_postgres():
+        row = conn.execute(
+            "SELECT skip_charge FROM nutrition_calendar WHERE the_date = %s",
+            (date_str,),
+        ).fetchone()
+    else:
+        row = conn.execute(
+            "SELECT skip_charge FROM nutrition_calendar WHERE the_date = ?",
+            (date_str,),
+        ).fetchone()
+    if row is not None:
+        return not (row[0] if is_postgres() else bool(row[0]))
+    # По умолчанию: не списывать в сб и вс
+    return wd not in (5, 6)
+
+
+def nutrition_calendar_get(date_str: str) -> bool | None:
+    """Получить переопределение для даты: True = не списывать, False = списывать, None = нет записи (по умолчанию сб/вс не списывать)."""
+    conn = get_connection()
+    if is_postgres():
+        row = conn.execute(
+            "SELECT skip_charge FROM nutrition_calendar WHERE the_date = %s",
+            (date_str,),
+        ).fetchone()
+    else:
+        row = conn.execute(
+            "SELECT skip_charge FROM nutrition_calendar WHERE the_date = ?",
+            (date_str,),
+        ).fetchone()
+    if row is None:
+        return None
+    return bool(row[0]) if is_postgres() else bool(row[0])
+
+
+def nutrition_calendar_set(date_str: str, skip_charge: bool) -> None:
+    """Установить для даты: списывать (False) или не списывать (True)."""
+    conn = get_connection()
+    if is_postgres():
+        conn.execute(
+            """
+            INSERT INTO nutrition_calendar (the_date, skip_charge) VALUES (%s, %s)
+            ON CONFLICT (the_date) DO UPDATE SET skip_charge = EXCLUDED.skip_charge
+            """,
+            (date_str, skip_charge),
+        )
+    else:
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO nutrition_calendar (the_date, skip_charge) VALUES (?, ?)
+            """,
+            (date_str, 1 if skip_charge else 0),
+        )
+    conn.commit()
+
+
+def nutrition_calendar_get_range(date_from: str, date_to: str) -> list[dict]:
+    """Список переопределений в диапазоне дат. Каждый элемент: {'date': 'YYYY-MM-DD', 'skip_charge': bool}."""
+    conn = get_connection()
+    if is_postgres():
+        rows = conn.execute(
+            "SELECT the_date::text, skip_charge FROM nutrition_calendar WHERE the_date >= %s AND the_date <= %s ORDER BY the_date",
+            (date_from, date_to),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT the_date, skip_charge FROM nutrition_calendar WHERE the_date >= ? AND the_date <= ? ORDER BY the_date",
+            (date_from, date_to),
+        ).fetchall()
+    return [{"date": str(r[0]), "skip_charge": bool(r[1])} for r in rows]
+
+
 def process_nutrition_deductions_for_date(target_date: str) -> int:
     """Создать списания за дату по плану, действующему на эту дату (effective_from <= target_date), и текущим ценам."""
+    if not should_charge_nutrition_for_date(target_date):
+        return 0
     prices = meal_prices_get_all()
     conn = get_connection()
     created = 0

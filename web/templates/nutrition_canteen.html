@@ -8,20 +8,22 @@
     <p class="canteen-date-nav-label">Быстрый выбор даты:</p>
     <div class="canteen-date-buttons">
         {% for d in date_buttons_back %}
-        <a href="/nutrition/canteen?date={{ d }}{% if date_from_param %}&date_from={{ date_from_param }}&date_to={{ date_to_param }}{% endif %}" class="btn btn-outline{% if d == today_iso %} canteen-date-today{% endif %}">{{ d[8:10] }}.{{ d[5:7] }}</a>
+        <a href="/nutrition/canteen?date={{ d }}{% if date_from_param %}&date_from={{ date_from_param }}&date_to={{ date_to_param }}{% endif %}" class="btn btn-outline{% if d == today_iso %} canteen-date-today{% endif %}{% if d in weekend_dates %} canteen-date-weekend{% endif %}">{{ d[8:10] }}.{{ d[5:7] }}</a>
         {% endfor %}
         <span class="btn btn-primary canteen-date-current{% if data.date == today_iso %} canteen-date-today{% endif %}">{{ data.date[8:10] }}.{{ data.date[5:7] }}</span>
         {% for d in date_buttons_forward %}
-        <a href="/nutrition/canteen?date={{ d }}{% if date_from_param %}&date_from={{ date_from_param }}&date_to={{ date_to_param }}{% endif %}" class="btn btn-outline{% if d == today_iso %} canteen-date-today{% endif %}">{{ d[8:10] }}.{{ d[5:7] }}</a>
+        <a href="/nutrition/canteen?date={{ d }}{% if date_from_param %}&date_from={{ date_from_param }}&date_to={{ date_to_param }}{% endif %}" class="btn btn-outline{% if d == today_iso %} canteen-date-today{% endif %}{% if d in weekend_dates %} canteen-date-weekend{% endif %}">{{ d[8:10] }}.{{ d[5:7] }}</a>
         {% endfor %}
     </div>
     <form method="get" action="/nutrition/canteen" class="canteen-date-range-form" style="margin-top: 0.75rem;">
         <span class="canteen-date-range-label">Свой диапазон:</span>
-        <label for="date_from">от</label>
-        <input type="date" id="date_from" name="date_from" value="{{ date_from_param }}">
-        <label for="date_to">до</label>
-        <input type="date" id="date_to" name="date_to" value="{{ date_to_param }}">
-        <button type="submit" class="btn btn-secondary">Показать</button>
+        <div class="canteen-date-range-row">
+            <label for="date_from">от</label>
+            <input type="date" id="date_from" name="date_from" value="{{ date_from_param }}">
+            <label for="date_to">до</label>
+            <input type="date" id="date_to" name="date_to" value="{{ date_to_param }}">
+            <button type="submit" class="btn btn-secondary">Показать</button>
+        </div>
     </form>
     {% if date_range_list|length > 1 %}
     <p class="canteen-date-range-links hint" style="margin-top: 0.5rem;">

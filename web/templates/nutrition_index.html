@@ -8,20 +8,22 @@
     <p class="canteen-date-nav-label">Быстрый выбор даты:</p>
     <div class="canteen-date-buttons">
         {% for d in date_buttons_back %}
-        <a href="/nutrition/canteen?date={{ d }}" class="btn btn-outline{% if d == today_iso %} canteen-date-today{% endif %}">{{ d[8:10] }}.{{ d[5:7] }}</a>
+        <a href="/nutrition/canteen?date={{ d }}" class="btn btn-outline{% if d == today_iso %} canteen-date-today{% endif %}{% if d in weekend_dates %} canteen-date-weekend{% endif %}">{{ d[8:10] }}.{{ d[5:7] }}</a>
         {% endfor %}
         <a href="/nutrition/canteen?date={{ today_iso }}" class="btn btn-primary canteen-date-today">{{ today_iso[8:10] }}.{{ today_iso[5:7] }} (сегодня)</a>
         {% for d in date_buttons_forward %}
-        <a href="/nutrition/canteen?date={{ d }}" class="btn btn-outline{% if d == today_iso %} canteen-date-today{% endif %}">{{ d[8:10] }}.{{ d[5:7] }}</a>
+        <a href="/nutrition/canteen?date={{ d }}" class="btn btn-outline{% if d == today_iso %} canteen-date-today{% endif %}{% if d in weekend_dates %} canteen-date-weekend{% endif %}">{{ d[8:10] }}.{{ d[5:7] }}</a>
         {% endfor %}
     </div>
     <form method="get" action="/nutrition/canteen" class="canteen-date-range-form" style="margin-top: 0.75rem;">
         <span class="canteen-date-range-label">Свой диапазон:</span>
-        <label for="date_from">от</label>
-        <input type="date" id="date_from" name="date_from">
-        <label for="date_to">до</label>
-        <input type="date" id="date_to" name="date_to">
-        <button type="submit" class="btn btn-secondary">Показать расклад</button>
+        <div class="canteen-date-range-row">
+            <label for="date_from">от</label>
+            <input type="date" id="date_from" name="date_from">
+            <label for="date_to">до</label>
+            <input type="date" id="date_to" name="date_to">
+            <button type="submit" class="btn btn-secondary">Показать расклад</button>
+        </div>
     </form>
 </div>
 
@@ -40,6 +42,9 @@
 </p>
 {% if can_edit_nutrition_settings %}
 <p><a href="/nutrition/settings" class="btn btn-secondary">Настройки: дедлайн редактирования питания</a></p>
+{% endif %}
+{% if can_edit_calendar %}
+<p><a href="/nutrition/calendar" class="btn btn-secondary">Календарь питания</a> — в какие дни списывать (выходные по умолчанию не списываются)</p>
 {% endif %}
 {% endif %}
 {% endblock %}

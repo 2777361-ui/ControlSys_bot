@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Календарь питания — Школьная система{% endblock %}
+{% block content %}
+<h1>Календарь питания</h1>
+<p class="hint">Укажите, в какие дни <strong>списывать</strong> питание. По умолчанию суббота и воскресенье не списываются. Здесь можно отменить списание в праздничный понедельник или добавить списание в выходной, если родитель забыл снять питание. Доступно на 31 день вперёд.</p>
+
+{% if request.query_params.get("ok") == "1" %}
+<p class="success">Настройки сохранены.</p>
+{% endif %}
+
+<form method="post" action="/nutrition/calendar">
+    <table class="nutrition-calendar-table">
+        <thead>
+            <tr>
+                <th>Дата</th>
+                <th>День</th>
+                <th>Списывать питание</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for day in days %}
+            <tr class="{% if day.is_weekend %}nutrition-calendar-weekend{% endif %}">
+                <td>{{ day.date[8:10] }}.{{ day.date[5:7] }}.{{ day.date[:4] }}</td>
+                <td>{{ day.weekday }}</td>
+                <td>
+                    <label class="nutrition-calendar-checkbox">
+                        <input type="checkbox" name="charge" value="{{ day.date }}"{% if day.charge %} checked{% endif %}>
+                        Да
+                    </label>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <p style="margin-top: 1rem;">
+        <button type="submit" class="btn btn-primary">Сохранить</button>
+    </p>
+</form>
+
+<p style="margin-top: 1.5rem;"><a href="/nutrition" class="btn btn-secondary">← К разделу «Питание»</a></p>
+{% endblock %}
