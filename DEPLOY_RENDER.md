@@ -125,11 +125,15 @@ git push origin main
 ### Что нужно сделать (таблицы «активировать» не нужно)
 
 1. Зайди на [supabase.com](https://supabase.com), создай проект (если ещё нет).
-2. В проекте: **Project Settings** → **Database** → в блоке **Connection string** выбери **URI** и скопируй строку (типа `postgresql://postgres.[ref]:[PASSWORD]@...supabase.co:5432/postgres`).
-3. В Render в **Environment** добавь переменную **`DATABASE_URL`** (отметь как **Secret**) и вставь эту строку, подставив вместо `[YOUR-PASSWORD]` пароль из Supabase (его можно посмотреть/сбросить в том же разделе Database).
+2. В проекте: **Project Settings** → **Database** → в блоке **Connection string**:
+   - **Для Render обязательно используй «Session mode» (Connection pooling), а не «Direct connection».** Прямое подключение (URI с хостом `db.xxx.supabase.co`) с Render часто даёт ошибку `Network is unreachable` (IPv6). Выбери вкладку **Session mode** и скопируй URI (хост будет вида `aws-0-REGION.pooler.supabase.com`, порт 5432).
+   - Подставь в строку пароль БД вместо `[YOUR-PASSWORD]` (пароль — в том же разделе Database).
+3. В Render в **Environment** добавь переменную **`DATABASE_URL`** (отметь как **Secret**) и вставь эту строку (Session mode).
 4. Задеплой или перезапусти сервис.
 
 **Таблицы создаются автоматически** при первом запуске приложения: код вызывает `init_db()` → при наличии `DATABASE_URL` выполняется создание всех таблиц в Supabase (`CREATE TABLE IF NOT EXISTS`). Вручную ничего создавать в Supabase не нужно.
+
+**Ошибка `Network is unreachable` при подключении к Supabase:** среда Render может не иметь доступа по IPv6, а прямое подключение к Supabase (Direct) часто отдаёт IPv6. Замени `DATABASE_URL` на строку **Session mode** из Supabase: Project Settings → Database → Connection string → вкладка **Session mode** (хост `*.pooler.supabase.com`). Перезапусти сервис.
 
 ### После деплоя и редеплоя
 
