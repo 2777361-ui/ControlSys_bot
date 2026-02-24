@@ -184,6 +184,7 @@ uvicorn web.main:app --reload --host 0.0.0.0 --port 8001
 
 - **Локально:** по умолчанию используется **SQLite** (`data/school.db`) — пользователи, ученики, платежи, мероприятия, напоминания, рассылки. Таблицы создаются при первом запуске.
 - **Продакшен (Render и др.):** чтобы данные не пропадали при перезапуске, задай переменную окружения **`DATABASE_URL`** — строку подключения к **PostgreSQL**. Например, **Supabase**: зайди в проект → Project Settings → Database → Connection string (URI), скопируй и подставь пароль. В Render добавь `DATABASE_URL` в Environment (Secret). При первом запуске таблицы создадутся в Supabase автоматически. Подробнее — в [DEPLOY_RENDER.md](DEPLOY_RENDER.md).
+- **Бэкап и перенос БД** (например, на Amvera или другой сервер): см. [BACKUP_MIGRATION.md](BACKUP_MIGRATION.md) — как делать дамп PostgreSQL/SQLite, чем открыть и как восстановить на новом хосте.
 
 ## Роли и авторизация
 

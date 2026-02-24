@@ -132,32 +132,87 @@ class _PgCursor:
         return self._cursor.rowcount
 
 
+def _is_connection_lost_error(exc: BaseException) -> bool:
+    """Проверка: ошибка из-за закрытого/оборванного соединения с PostgreSQL."""
+    msg = str(exc).lower()
+    return (
+        "closed" in msg
+        or "connection" in msg and ("terminated" in msg or "unexpectedly" in msg or "refused" in msg)
+        or "server closed" in msg
+    )
+
+
 class _PgConnection:
-    """Обёртка над psycopg2-соединением: тот же интерфейс, что и sqlite3 (execute, commit, ? → %s)."""
+    """Обёртка над psycopg2-соединением: тот же интерфейс, что и sqlite3 (execute, commit, ? → %s). При обрыве соединения — переподключение и повтор запроса."""
     def __init__(self, conn):
         self._conn = conn
 
     def execute(self, sql: str, params: tuple = ()) -> _PgCursor:
+        from psycopg2 import OperationalError, InterfaceError
         from psycopg2.extras import RealDictCursor
-        # Совместимость с SQLite-запросами: плейсхолдеры и функция времени
-        sql = sql.replace("?", "%s").replace("datetime('now')", "NOW()")
-        cursor = self._conn.cursor(cursor_factory=RealDictCursor)
-        cur = _PgCursor(cursor, self._conn)
-        cur.execute(sql, params)
-        return cur
+        sql_norm = sql.replace("?", "%s").replace("datetime('now')", "NOW()")
+        try:
+            cursor = self._conn.cursor(cursor_factory=RealDictCursor)
+            cur = _PgCursor(cursor, self._conn)
+            cur.execute(sql_norm, params)
+            return cur
+        except (OperationalError, InterfaceError) as e:
+            if _is_connection_lost_error(e):
+                logger.warning("Соединение с PostgreSQL оборвано, переподключаемся: %s", e)
+                close_db()
+                new_conn = get_connection()
+                return new_conn.execute(sql, params)
+            raise
 
     def commit(self) -> None:
-        self._conn.commit()
+        from psycopg2 import OperationalError, InterfaceError
+        try:
+            self._conn.commit()
+        except (OperationalError, InterfaceError) as e:
+            if _is_connection_lost_error(e):
+                logger.warning("Соединение с PostgreSQL оборвано при commit, переподключаемся: %s", e)
+                close_db()
+                new_conn = get_connection()
+                new_conn.commit()
+            else:
+                raise
 
     def close(self) -> None:
         self._conn.close()
 
 
+def _is_pg_connection(conn: Any) -> bool:
+    """Является ли соединение обёрткой PostgreSQL."""
+    return type(conn).__name__ == "_PgConnection"
+
+
+def _pg_connection_ok(conn: Any) -> bool:
+    """Проверка: живое ли соединение с PostgreSQL (быстрый ping)."""
+    if not _is_pg_connection(conn):
+        return True
+    try:
+        cur = conn._conn.cursor()
+        cur.execute("SELECT 1")
+        cur.close()
+        return True
+    except Exception:
+        return False
+
+
 def get_connection() -> sqlite3.Connection | _PgConnection:
-    """Одно соединение с БД на всё приложение. SQLite или PostgreSQL (Supabase)."""
+    """Одно соединение с БД на всё приложение. SQLite или PostgreSQL (Supabase). Для PostgreSQL при «мёртвом» соединении — переподключение."""
     global _connection
     if _connection is not None:
-        return _connection
+        if not _is_pg_connection(_connection):
+            return _connection
+        if _pg_connection_ok(_connection):
+            return _connection
+        logger.warning("Кэшированное соединение с PostgreSQL недоступно, переподключаемся")
+        try:
+            _connection._conn.close()
+        except Exception:
+            pass
+        _connection = None
 
     url = _get_database_url()
     if url:

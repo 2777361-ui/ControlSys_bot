@@ -2,12 +2,28 @@
 {% block title %}Ссылка приглашения — Школьная система{% endblock %}
 {% block content %}
 <h1>Приглашение для родителя</h1>
-<p>Отправьте эту ссылку родителю ученика <strong>{{ student.full_name }}</strong> ({{ student.class_grade|class_grade_display }}). Ссылка ведёт на <strong>веб-сайт</strong> школы: родитель откроет её в браузере, зарегистрируется и привяжется к ребёнку (не в Telegram).</p>
+
+<section class="invite-context" style="margin-bottom: 1.25rem;">
+    <p><strong>Ученик:</strong> {{ student.full_name }} — {{ student.class_grade|class_grade_display }}</p>
+    <p>Скопируйте ссылку ниже и отправьте её родителю (в мессенджер, по почте или устно). Родитель откроет ссылку в <strong>браузере</strong> (на телефоне или компьютере), зарегистрируется на сайте школы и будет привязан к этому ребёнку. Это <strong>не</strong> ссылка в Telegram.</p>
+</section>
+
 <div class="invite-url-box">
     <input type="text" id="inviteUrl" readonly value="{{ invite_url }}" class="invite-input">
     <button type="button" class="btn btn-primary" onclick="copyInvite()">Копировать ссылку</button>
 </div>
-<p class="hint">Ссылка действительна 30 дней. После регистрации родителя по этой ссылке она станет недействительной.</p>
+
+<section class="invite-hints" style="margin-top: 1rem;">
+    <p class="hint"><strong>Срок действия:</strong> ссылка действует 30 дней. После того как родитель зарегистрируется по этой ссылке, она станет недействительной.</p>
+    <details class="invite-sample-message" style="margin-top: 0.75rem;">
+        <summary>Пример сообщения для родителя</summary>
+        <blockquote style="margin: 0.5rem 0 0; padding: 0.75rem; background: var(--card-bg, #f5f5f5); border-radius: 6px; font-size: 0.95em;">
+            Здравствуйте! Вам направлена ссылка для доступа к личному кабинету родителя ученика {{ student.full_name }} ({{ student.class_grade|class_grade_display }}). Перейдите по ссылке, зарегистрируйтесь (укажите ФИО, email и пароль) — после этого вы сможете видеть баланс, вносить платежи и получать информацию по ребёнку.<br><br>
+            Ссылка: [вставьте скопированную ссылку]
+        </blockquote>
+    </details>
+</section>
+
 <p><a href="/students" class="btn btn-secondary">← К списку учеников</a></p>
 <script>
 function copyInvite() {

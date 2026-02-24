@@ -3,7 +3,20 @@
 {% block content %}
 <div class="register-card">
     <h1>Регистрация родителя</h1>
-    <p class="invite-info">Вас приглашают зарегистрироваться как родитель ученика <strong>{{ invitation.student_name }}</strong> ({{ invitation.class_grade|class_grade_display }}).</p>
+
+    <div class="invite-info" style="margin-bottom: 1.25rem;">
+        <p><strong>Вас пригласили в личный кабинет родителя.</strong></p>
+        <p>Привязка к ученику: <strong>{{ invitation.student_name }}</strong> — {{ invitation.class_grade|class_grade_display }}.</p>
+        <p class="hint" style="margin-top: 0.5rem;">После регистрации вы сможете:</p>
+        <ul class="invite-benefits" style="margin: 0.25rem 0 1rem 1.5rem;">
+            <li>видеть баланс и историю платежей по ребёнку;</li>
+            <li>вносить платежи (питание, обучение и др.);</li>
+            <li>настраивать питание (завтрак, обед, ужин) и просматривать списания;</li>
+            <li>получать информацию о мероприятиях и напоминания о платежах (в т.ч. в Telegram, если привяжете аккаунт).</li>
+        </ul>
+        <p class="hint">Заполните форму ниже. Ссылка действительна 30 дней и действует один раз.</p>
+    </div>
+
     {% if request.query_params.get("error") == "email_taken" %}
     <p class="error">Этот email уже зарегистрирован. Войдите или укажите другой.</p>
     {% elif request.query_params.get("error") == "validation" %}
