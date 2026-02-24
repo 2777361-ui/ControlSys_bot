@@ -518,7 +518,10 @@ def _init_db_postgres() -> None:
         try:
             conn.execute(stmt)
         except Exception:
-            pass
+            try:
+                conn.rollback()
+            except Exception:
+                pass
     # Дефолтные цены питания
     conn.execute("INSERT INTO meal_prices (meal_type, price) VALUES ('breakfast', 0), ('lunch', 0), ('dinner', 0) ON CONFLICT (meal_type) DO NOTHING")
     # Дефолтные назначения с ценой и типом начисления (обучение — ежемесячно, питание — ежедневно, остальные — по внесению)
@@ -2424,10 +2427,13 @@ def student_by_id(student_id: int, include_deleted: bool = False) -> dict[str, A
             row = conn.execute("SELECT * FROM students WHERE id = ?", (student_id,)).fetchone()
     else:
         if is_postgres():
-            row = conn.execute(
-                "SELECT * FROM students WHERE id = %s AND deleted_at IS NULL",
-                (student_id,),
-            ).fetchone()
+            if _pg_students_has_deleted_at_column():
+                row = conn.execute(
+                    "SELECT * FROM students WHERE id = %s AND deleted_at IS NULL",
+                    (student_id,),
+                ).fetchone()
+            else:
+                row = conn.execute("SELECT * FROM students WHERE id = %s", (student_id,)).fetchone()
         else:
             row = conn.execute(
                 "SELECT * FROM students WHERE id = ? AND deleted_at IS NULL",
@@ -2475,13 +2481,38 @@ def _pg_students_has_archived_column() -> bool:
     return _pg_students_archived_column_exists
 
 
+# Кэш: есть ли колонка students.deleted_at в PostgreSQL (если ALTER не выполнился — запросы не падают).
+_pg_students_deleted_at_column_exists: bool | None = None
+
+
+def _pg_students_has_deleted_at_column() -> bool:
+    """Для PostgreSQL: есть ли колонка deleted_at в таблице students (кэш на процесс)."""
+    global _pg_students_deleted_at_column_exists
+    if not is_postgres():
+        return True
+    if _pg_students_deleted_at_column_exists is not None:
+        return _pg_students_deleted_at_column_exists
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            """
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'students' AND column_name = 'deleted_at'
+            """
+        ).fetchone()
+        _pg_students_deleted_at_column_exists = bool(row)
+    except Exception:
+        _pg_students_deleted_at_column_exists = False
+    return _pg_students_deleted_at_column_exists
+
+
 # Кэш: колонка students.archived уже проверена для PostgreSQL (избегаем лишних запросов).
 _students_archived_column_ensured = False
 
 
 def _ensure_students_archived_column_pg() -> None:
     """Для PostgreSQL: если в таблице students нет колонок archived, deleted_at, photo_path, comment — добавить."""
-    global _students_archived_column_ensured, _pg_students_archived_column_exists
+    global _students_archived_column_ensured, _pg_students_archived_column_exists, _pg_students_deleted_at_column_exists
     if not is_postgres() or _students_archived_column_ensured:
         return
     conn = get_connection()
@@ -2506,7 +2537,9 @@ def _ensure_students_archived_column_pg() -> None:
                 conn.commit()
                 logger.info("PostgreSQL: добавлена колонка students.%s", col)
                 if col == "archived":
-                    _pg_students_archived_column_exists = True  # чтобы фильтр и student_set_archived сразу видели колонку
+                    _pg_students_archived_column_exists = True
+                if col == "deleted_at":
+                    _pg_students_deleted_at_column_exists = True
         # Помечаем миграцию выполненной только если все колонки проверены/добавлены без ошибки
         _students_archived_column_ensured = True
     except Exception as e:
@@ -2519,7 +2552,9 @@ def _ensure_students_archived_column_pg() -> None:
 
 
 def _students_not_deleted_condition(table_alias: str = "s") -> str:
-    """SQL: ученик не удалён (deleted_at IS NULL). Колонка есть после миграции."""
+    """SQL: ученик не удалён (deleted_at IS NULL). Если колонки нет (миграция не прошла) — не фильтруем по ней."""
+    if is_postgres() and not _pg_students_has_deleted_at_column():
+        return "1=1"
     prefix = f"{table_alias}." if table_alias else ""
     return f"({prefix}deleted_at IS NULL)"
 
