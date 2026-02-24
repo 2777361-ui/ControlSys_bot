@@ -177,6 +177,13 @@ class _PgConnection:
             else:
                 raise
 
+    def rollback(self) -> None:
+        """Откат транзакции (для обработки ошибок при ALTER и т.д.)."""
+        try:
+            self._conn.rollback()
+        except Exception:
+            pass
+
     def close(self) -> None:
         self._conn.close()
 

@@ -2241,10 +2241,39 @@ def student_by_id(student_id: int) -> dict[str, Any] | None:
 
 
 def _archived_condition(include_archived: bool, table_alias: str = "s") -> str:
-    """SQL: активные (не в архиве) или все. Для PostgreSQL и SQLite (archived 0/1 или NULL)."""
+    """SQL: активные (не в архиве) или все. Для PostgreSQL и SQLite (archived 0/1 или NULL).
+    Если в PG колонки archived ещё нет (ALTER не выполнился из-за таймаута), возвращаем 1=1, чтобы запрос не падал."""
     if include_archived:
         return "1=1"
-    return f"({table_alias}.archived = 0 OR {table_alias}.archived IS NULL)"
+    if is_postgres() and not _pg_students_has_archived_column():
+        return "1=1"
+    prefix = f"{table_alias}." if table_alias else ""
+    return f"({prefix}archived = 0 OR {prefix}archived IS NULL)"
+
+
+# Кэш: есть ли колонка students.archived в PostgreSQL (проверка information_schema).
+_pg_students_archived_column_exists: bool | None = None
+
+
+def _pg_students_has_archived_column() -> bool:
+    """Для PostgreSQL: есть ли колонка archived в таблице students (кэш на процесс). Если ALTER не выполнился — False."""
+    global _pg_students_archived_column_exists
+    if not is_postgres():
+        return True
+    if _pg_students_archived_column_exists is not None:
+        return _pg_students_archived_column_exists
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            """
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = 'students' AND column_name = 'archived'
+            """
+        ).fetchone()
+        _pg_students_archived_column_exists = bool(row)
+    except Exception:
+        _pg_students_archived_column_exists = False
+    return _pg_students_archived_column_exists
 
 
 # Кэш: колонка students.archived уже проверена для PostgreSQL (избегаем лишних запросов).
@@ -2296,11 +2325,22 @@ def students_all(include_archived: bool = False) -> list[dict[str, Any]]:
 
 def student_set_archived(student_id: int, archived: bool) -> bool:
     """Перевести ученика в архив (True) или восстановить (False). В архиве не участвует в списках и расчётах."""
+    if is_postgres() and not _pg_students_has_archived_column():
+        return False  # колонка ещё не создана (ALTER не выполнился из-за таймаута)
     conn = get_connection()
-    val = 1 if archived else 0
-    cur = conn.execute("UPDATE students SET archived = ?, updated_at = datetime('now') WHERE id = ?", (val, student_id))
-    conn.commit()
-    return cur.rowcount > 0
+    try:
+        val = 1 if archived else 0
+        cur = conn.execute("UPDATE students SET archived = ?, updated_at = datetime('now') WHERE id = ?", (val, student_id))
+        conn.commit()
+        return cur.rowcount > 0
+    except Exception as e:
+        if is_postgres():
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            logger.warning("student_set_archived: %s", e)
+        return False
 
 
 def students_by_class_grade(class_grade: int) -> list[dict[str, Any]]:
@@ -3219,8 +3259,9 @@ def process_education_charges_for_month(month_date: str) -> int:
     if price <= 0:
         return 0
     conn = get_connection()
+    where_archived = _archived_condition(False, "")
     rows = conn.execute(
-        "SELECT id FROM students WHERE (archived = 0 OR archived IS NULL) ORDER BY id"
+        f"SELECT id FROM students WHERE {where_archived} ORDER BY id"
     ).fetchall()
     created = 0
     for row in rows:
@@ -3450,14 +3491,15 @@ def canteen_view_for_date(target_date: str) -> dict[str, Any]:
     Используется план, действующий на target_date (effective_from <= target_date, последний по дате)."""
     _ensure_students_archived_column_pg()
     conn = get_connection()
+    where_archived = _archived_condition(False, "s")
     students_rows = conn.execute(
-        """
+        f"""
         SELECT s.id, s.full_name, s.class_grade,
                COALESCE((SELECT smp.has_breakfast FROM student_meal_plan smp WHERE smp.student_id = s.id AND smp.effective_from <= ? ORDER BY smp.effective_from DESC LIMIT 1), 1) AS has_breakfast,
                COALESCE((SELECT smp.has_lunch FROM student_meal_plan smp WHERE smp.student_id = s.id AND smp.effective_from <= ? ORDER BY smp.effective_from DESC LIMIT 1), 1) AS has_lunch,
                COALESCE((SELECT smp.has_dinner FROM student_meal_plan smp WHERE smp.student_id = s.id AND smp.effective_from <= ? ORDER BY smp.effective_from DESC LIMIT 1), 0) AS has_dinner
         FROM students s
-        WHERE (s.archived = 0 OR s.archived IS NULL)
+        WHERE {where_archived}
         ORDER BY s.class_grade, s.full_name
         """,
         (target_date, target_date, target_date),
