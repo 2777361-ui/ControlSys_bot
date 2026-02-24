@@ -2507,13 +2507,15 @@ def _ensure_students_archived_column_pg() -> None:
                 logger.info("PostgreSQL: добавлена колонка students.%s", col)
                 if col == "archived":
                     _pg_students_archived_column_exists = True  # чтобы фильтр и student_set_archived сразу видели колонку
+        # Помечаем миграцию выполненной только если все колонки проверены/добавлены без ошибки
+        _students_archived_column_ensured = True
     except Exception as e:
         logger.warning("PostgreSQL: не удалось добавить колонки students: %s", e)
         try:
             conn.rollback()
         except Exception:
             pass
-    _students_archived_column_ensured = True
+        # Не ставим _students_archived_column_ensured = True, чтобы при следующем запросе повторить попытку
 
 
 def _students_not_deleted_condition(table_alias: str = "s") -> str:
@@ -2558,8 +2560,18 @@ def student_set_archived(student_id: int, archived: bool) -> bool:
         return False  # колонка ещё не создана (ALTER не выполнился из-за таймаута)
     conn = get_connection()
     try:
-        val = 1 if archived else 0
-        cur = conn.execute("UPDATE students SET archived = ?, updated_at = datetime('now') WHERE id = ?", (val, student_id))
+        # В PostgreSQL колонка archived — BOOLEAN, передаём True/False; в SQLite — INTEGER 0/1
+        if is_postgres():
+            cur = conn.execute(
+                "UPDATE students SET archived = ?, updated_at = NOW() WHERE id = ?",
+                (archived, student_id),
+            )
+        else:
+            val = 1 if archived else 0
+            cur = conn.execute(
+                "UPDATE students SET archived = ?, updated_at = datetime('now') WHERE id = ?",
+                (val, student_id),
+            )
         conn.commit()
         return cur.rowcount > 0
     except Exception as e:
