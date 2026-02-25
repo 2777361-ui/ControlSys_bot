@@ -42,6 +42,7 @@ from bot.school_db import (
     ROLE_PARENT,
     balance_canteen_for_student,
     events_list,
+    format_class_grade,
     parent_report_payment_create,
     payment_confirm,
     payment_create,
@@ -160,13 +161,16 @@ async def btn_my_children(message: Message, school_user: dict | None) -> None:
         return
     students = students_by_parent_id(school_user["id"])
     if not students:
-        await message.answer("У вас пока не добавлены дети. Обратитесь в школу.")
+        await message.answer(
+            "У вас пока не добавлены дети. Обратитесь в школу: вас должны привязать к ученику "
+            "в разделе «Ученики» → карточка ученика → «Привязать существующего родителя»."
+        )
         return
     lines = []
     for s in students:
         balance = balance_canteen_for_student(s["id"])
         lines.append(
-            f"• {s['full_name']} — {school_db.format_class_grade(s['class_grade'])}. "
+            f"• {s['full_name']} — {format_class_grade(s['class_grade'])}. "
             f"Баланс столовой: {balance:.2f} ₽"
         )
     await message.answer("👶 Ваши дети:\n\n" + "\n\n".join(lines))
@@ -185,7 +189,7 @@ async def btn_canteen_balance(message: Message, school_user: dict | None) -> Non
     lines = []
     for s in students:
         balance = balance_canteen_for_student(s["id"])
-        lines.append(f"• {s['full_name']} ({school_db.format_class_grade(s['class_grade'])}): {balance:.2f} ₽")
+        lines.append(f"• {s['full_name']} ({format_class_grade(s['class_grade'])}): {balance:.2f} ₽")
     await message.answer("🍽 Баланс столовой по вашим детям:\n\n" + "\n".join(lines))
 
 
