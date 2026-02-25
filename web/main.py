@@ -350,6 +350,12 @@ def require_can_edit_student(request: Request, student_id: int):
     raise HTTPException(status_code=403, detail="Нет доступа к редактированию этого ученика")
 
 
+@app.get("/admin", response_class=HTMLResponse)
+async def admin_redirect(request: Request):
+    """Редирект /admin → главная (далее по роли: дашборд или логин). Удобно открывать «админку» по адресу /admin."""
+    return RedirectResponse(url="/", status_code=302)
+
+
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     """Главная: редирект в дашборд (администратор/директор/бухгалтер), питание (учитель/столовая) или логин."""
