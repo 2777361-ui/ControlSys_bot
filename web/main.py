@@ -18,7 +18,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from fastapi import FastAPI, File, Form, Query, Request, Response, Depends, HTTPException, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -33,6 +33,18 @@ from web.auth_utils import (
 from web.email_utils import get_smtp_config, send_password_reset_email
 
 app = FastAPI(title="Школьная система")
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException) -> Response:
+    """Ответ с ошибкой в UTF-8, чтобы кириллица (например «email уже занят») не искажалась в клиенте."""
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+        headers={"Content-Type": "application/json; charset=utf-8"},
+    )
+
+
 static_dir = Path(__file__).parent / "static"
 if static_dir.exists():
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
@@ -351,8 +363,9 @@ def require_can_edit_student(request: Request, student_id: int):
 
 
 @app.get("/admin", response_class=HTMLResponse)
+@app.get("/admin/", response_class=HTMLResponse)
 async def admin_redirect(request: Request):
-    """Редирект /admin → главная (далее по роли: дашборд или логин). Удобно открывать «админку» по адресу /admin."""
+    """Редирект /admin и /admin/ → главная (далее по роли: дашборд или логин). Удобно открывать «админку» по адресу /admin."""
     return RedirectResponse(url="/", status_code=302)
 
 
