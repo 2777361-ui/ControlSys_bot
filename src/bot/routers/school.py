@@ -25,8 +25,9 @@ from bot.keyboards.school import (
     CB_PAY_PURPOSE,
     CB_PAY_STUDENT,
     BTN_MY_CHILDREN,
-    BTN_CANTEEN_BALANCE,
+    BTN_BALANCE,
     BTN_PAYMENTS,
+    BTN_INFO,
     BTN_EVENTS,
     BTN_ADD_PARENT,
     BTN_I_PAID,
@@ -40,14 +41,18 @@ from bot.keyboards.school import (
 from bot.keyboards.school import get_tasks_staff_keyboard
 from bot.school_db import (
     ROLE_PARENT,
-    balance_canteen_for_student,
+    balance_total_for_student,
     events_list,
     format_class_grade,
+    nutrition_deductions_for_student,
+    nutrition_deductions_for_student_charge_to,
     parent_report_payment_create,
     payment_confirm,
     payment_create,
     payment_purpose_list,
+    payment_purpose_name_by_code,
     payments_by_student,
+    student_charges_for_student,
     student_parent_can_manage,
     student_parents_add,
     students_by_parent_id,
@@ -155,7 +160,7 @@ async def cmd_start_school(message: Message, school_user: dict | None) -> None:
 
 @router.message(F.text == BTN_MY_CHILDREN)
 async def btn_my_children(message: Message, school_user: dict | None) -> None:
-    """Список детей родителя."""
+    """Список детей родителя с общим балансом на текущий момент."""
     if not school_user or school_user.get("role") != ROLE_PARENT:
         await message.answer("Эта функция доступна только родителям. Войдите в систему.")
         return
@@ -168,17 +173,17 @@ async def btn_my_children(message: Message, school_user: dict | None) -> None:
         return
     lines = []
     for s in students:
-        balance = balance_canteen_for_student(s["id"])
+        balance = balance_total_for_student(s["id"])
         lines.append(
             f"• {s['full_name']} — {format_class_grade(s['class_grade'])}. "
-            f"Баланс столовой: {balance:.2f} ₽"
+            f"Баланс: {balance:.2f} ₽"
         )
-    await message.answer("👶 Ваши дети:\n\n" + "\n\n".join(lines))
+    await message.answer("👶 Ваши дети (баланс на текущий момент):\n\n" + "\n\n".join(lines))
 
 
-@router.message(F.text == BTN_CANTEEN_BALANCE)
-async def btn_canteen_balance(message: Message, school_user: dict | None) -> None:
-    """Баланс столовой: показываем по каждому ребёнку."""
+@router.message(F.text == BTN_BALANCE)
+async def btn_balance(message: Message, school_user: dict | None) -> None:
+    """Полная расшифровка по начисленным платежам и списаниям по каждому ребёнку."""
     if not school_user or school_user.get("role") != ROLE_PARENT:
         await message.answer("Доступ только для родителей.")
         return
@@ -186,11 +191,49 @@ async def btn_canteen_balance(message: Message, school_user: dict | None) -> Non
     if not students:
         await message.answer("У вас пока не добавлены дети.")
         return
-    lines = []
     for s in students:
-        balance = balance_canteen_for_student(s["id"])
-        lines.append(f"• {s['full_name']} ({format_class_grade(s['class_grade'])}): {balance:.2f} ₽")
-    await message.answer("🍽 Баланс столовой по вашим детям:\n\n" + "\n".join(lines))
+        parts = [f"💳 Баланс: {s['full_name']} ({format_class_grade(s['class_grade'])})\n"]
+        # Пополнения (подтверждённые платежи)
+        payments = [p for p in payments_by_student(s["id"]) if p.get("status") == "confirmed"]
+        if payments:
+            parts.append("📥 Пополнения:")
+            for p in payments[:30]:
+                date_str = (p.get("created_at") or "")[:10]
+                amount = float(p.get("amount_received") or p.get("amount") or 0)
+                purpose = payment_purpose_name_by_code(p.get("purpose") or "")
+                parts.append(f"  {date_str} — +{amount:.2f} ₽ ({purpose})")
+            parts.append("")
+        # Списания: питание ученика
+        nut = nutrition_deductions_for_student(s["id"])
+        if nut:
+            parts.append("📤 Списания (питание):")
+            for nd in nut[:30]:
+                date_str = (nd.get("deduction_date") or "")[:10]
+                amount = float(nd.get("amount") or 0)
+                parts.append(f"  {date_str} — −{amount:.2f} ₽")
+            parts.append("")
+        # Списания: обучение, расходники и т.д.
+        charges = student_charges_for_student(s["id"])
+        if charges:
+            parts.append("📤 Списания (обучение, расходники и т.д.):")
+            for ch in charges[:30]:
+                date_str = (ch.get("charge_date") or "")[:10]
+                amount = float(ch.get("amount") or 0)
+                name = ch.get("purpose_name") or ch.get("purpose_code") or ""
+                parts.append(f"  {date_str} — −{amount:.2f} ₽ ({name})")
+            parts.append("")
+        # Списания за питание родителя с баланса ребёнка
+        nut_parent = nutrition_deductions_for_student_charge_to(s["id"])
+        if nut_parent:
+            parts.append("📤 Списания (питание родителя с вашего баланса):")
+            for nd in nut_parent[:30]:
+                date_str = (nd.get("deduction_date") or "")[:10]
+                amount = float(nd.get("amount") or 0)
+                parts.append(f"  {date_str} — −{amount:.2f} ₽")
+            parts.append("")
+        total = balance_total_for_student(s["id"])
+        parts.append(f"Итого баланс: {total:.2f} ₽")
+        await message.answer("\n".join(parts))
 
 
 @router.message(F.text == BTN_PAYMENTS)
@@ -614,14 +657,15 @@ async def add_parent_telegram_id(message: Message, school_user: dict | None, sta
         await message.answer("Этот пользователь уже привязан к этому ребёнку.")
 
 
+@router.message(F.text == BTN_INFO)
 @router.message(F.text == BTN_EVENTS)
-async def btn_events(message: Message) -> None:
-    """Список мероприятий школы (доступно всем)."""
+async def btn_info_or_events(message: Message) -> None:
+    """Информация / мероприятия школы (доступно всем)."""
     events = events_list()
     if not events:
         await message.answer("Пока нет запланированных мероприятий.")
         return
-    parts = ["📅 Мероприятия школы:\n"]
+    parts = ["ℹ️ Мероприятия школы:\n"]
     for e in events[:20]:
         date = e.get("event_date") or "—"
         amount = e.get("amount_required")

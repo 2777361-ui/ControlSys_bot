@@ -8,12 +8,13 @@ from bot import school_db
 
 # Тексты кнопок для родителей
 BTN_MY_CHILDREN = "👶 Мои дети"
-BTN_CANTEEN_BALANCE = "🍽 Баланс столовой"
+BTN_BALANCE = "💳 Баланс"
 BTN_PAYMENTS = "📋 История платежей"
-BTN_EVENTS = "📅 Мероприятия"
-BTN_ADD_PARENT = "➕ Добавить второго родителя"
-BTN_I_PAID = "💳 Я оплатил (наличными)"
+BTN_INFO = "ℹ️ Информация"
+BTN_ADD_PARENT = "➕ Добавить родителя"
+BTN_I_PAID = "💳 Я оплатил(прошу проверить)"
 BTN_PAY = "⭐ Оплатить"
+BTN_EVENTS = "📅 Мероприятия"  # для обратной совместимости (старые клиенты)
 BTN_BACK = "◀️ Назад"
 
 # Текущие дела (для сотрудников с доступом)
@@ -35,16 +36,11 @@ CB_TASK_BACK_LIST = "task:back"
 
 
 def get_parent_keyboard() -> ReplyKeyboardMarkup:
-    """Главное меню для родителя: дети, столовая, платежи, мероприятия, добавить родителя."""
+    """Главное меню для родителя: ряд 1 — дети/баланс/платежи, ряд 2 — информация/оплатил/родитель, ряд 3 — Оплатить."""
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text=BTN_MY_CHILDREN)],
-            [
-                KeyboardButton(text=BTN_CANTEEN_BALANCE),
-                KeyboardButton(text=BTN_PAYMENTS),
-            ],
-            [KeyboardButton(text=BTN_EVENTS)],
-            [KeyboardButton(text=BTN_I_PAID), KeyboardButton(text=BTN_ADD_PARENT)],
+            [KeyboardButton(text=BTN_MY_CHILDREN), KeyboardButton(text=BTN_BALANCE), KeyboardButton(text=BTN_PAYMENTS)],
+            [KeyboardButton(text=BTN_INFO), KeyboardButton(text=BTN_I_PAID), KeyboardButton(text=BTN_ADD_PARENT)],
             [KeyboardButton(text=BTN_PAY)],
         ],
         resize_keyboard=True,
